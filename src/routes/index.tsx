@@ -3,11 +3,10 @@ import { useState } from "react";
 import {
   AlarmClock,
   ArrowRight,
+  Check,
   ClipboardCheck,
   Link2,
   LockKeyhole,
-  MailCheck,
-  MonitorCheck,
   MousePointerClick,
   ShieldCheck,
 } from "lucide-react";
@@ -43,6 +42,8 @@ function extractSlug(input: string): string | null {
   return null;
 }
 
+const ASSURANCES = ["Private per-exam links", "Unique student passwords", "Auto-submit on timeout"];
+
 function LandingPage() {
   const navigate = useNavigate();
   const [code, setCode] = useState("");
@@ -60,24 +61,24 @@ function LandingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen bg-background text-foreground antialiased">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-border/80 bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
           <Link to="/" className="flex items-center gap-2.5" aria-label={`${brand.appName} home`}>
-            <span className="grid size-9 place-items-center rounded-xl bg-brand font-mono text-sm font-semibold text-brand-foreground">
+            <span className="grid size-9 place-items-center rounded-xl bg-brand font-mono text-sm font-semibold text-brand-foreground shadow-sm">
               {brand.logoMark}
             </span>
             <span className="text-lg font-semibold tracking-tight">{brand.appName}</span>
           </Link>
-          <nav className="flex items-center gap-2">
-            <a href="#how-it-works" className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block">
-              How it works
-            </a>
-            <a href="#features" className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline-block">
+          <nav className="flex items-center gap-1" aria-label="Primary">
+            <a href="#features" className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-block">
               Features
             </a>
-            <Link to="/panel-admin-login" className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+            <a href="#how-it-works" className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-block">
+              How it works
+            </a>
+            <Link to="/panel-admin-login" className="ml-1 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow">
               Organizer Login
             </Link>
           </nav>
@@ -85,38 +86,59 @@ function LandingPage() {
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-pale-blue via-background to-background" />
-        <div className="relative mx-auto grid max-w-6xl gap-10 px-5 pb-16 pt-14 sm:pt-20 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center">
+      <section aria-labelledby="hero-heading" className="relative overflow-hidden">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-b from-pale-blue via-background to-background" />
+          <div className="absolute -top-32 left-1/2 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-brand/10 blur-3xl" />
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--color-border)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-border)_1px,transparent_1px)] bg-[size:56px_56px] opacity-40 [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent)]" />
+        </div>
+
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-14 sm:pt-24 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
           <div>
-            <p className="mono-label inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-muted-foreground">
-              <ShieldCheck className="size-3.5" /> Secure online examinations
+            <p className="mono-label inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/[0.07] px-3.5 py-1.5 text-brand">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-brand" />
+              </span>
+              Secure online examinations
             </p>
-            <h1 className="mt-5 text-5xl leading-[1.05] sm:text-6xl">
-              Secure, Seamless Online Exams
+            <h1 id="hero-heading" className="mt-6 text-5xl leading-[1.04] tracking-tight sm:text-6xl lg:text-7xl">
+              Secure, seamless <em className="text-brand">online exams</em>
             </h1>
-            <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              Each exam gets its own private link. Students log in with the password shared by
-              the organizer, take a timed, proctored test, and submit — all in one place.
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+              Every exam gets its own private link and every student gets their
+              own password. Timed, proctored, auto-submitted — no accounts, no
+              setup, no fuss.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <a href="#join" className="inline-flex h-12 items-center gap-2 rounded-full bg-brand px-6 text-sm font-medium text-brand-foreground shadow-sm transition-transform hover:scale-[1.02]">
+            <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2" aria-label="Highlights">
+              {ASSURANCES.map((a) => (
+                <li key={a} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                  <Check className="size-4 text-brand" strokeWidth={3} /> {a}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-9 flex flex-wrap items-center gap-3">
+              <a href="#join" className="inline-flex h-12 items-center gap-2 rounded-full bg-brand px-7 text-sm font-semibold text-brand-foreground shadow-md shadow-brand/20 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand/25">
                 Join Your Exam <ArrowRight className="size-4" />
               </a>
-              <Link to="/panel-admin-login" className="inline-flex h-12 items-center rounded-full border border-border bg-card px-6 text-sm font-medium transition-colors hover:bg-secondary">
-                Organizer Login
-              </Link>
+              <p className="text-sm text-muted-foreground">
+                No account needed — just your exam link.
+              </p>
             </div>
-            <p className="mt-4 text-sm text-muted-foreground">
-              Students: open the exam link sent by your organizer — no account needed.
-            </p>
           </div>
 
           {/* Join card */}
-          <div id="join" className="rounded-[22px] border border-border bg-card p-6 shadow-sm sm:p-8">
-            <p className="mono-label text-muted-foreground">Have an exam link?</p>
-            <h2 className="mt-2 text-2xl">Enter exam code or paste link</h2>
-            <form onSubmit={goToExam} className="mt-5">
+          <div id="join" className="scroll-mt-24 rounded-[24px] border border-border bg-card p-6 shadow-xl shadow-brand/[0.07] sm:p-8">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand text-brand-foreground">
+                <ShieldCheck className="size-5" />
+              </span>
+              <div>
+                <p className="mono-label text-muted-foreground">Have an exam link?</p>
+                <h2 className="text-2xl leading-tight">Enter code or paste link</h2>
+              </div>
+            </div>
+            <form onSubmit={goToExam} className="mt-6">
               <label htmlFor="exam-code" className="sr-only">Exam code or link</label>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <div className="relative flex-1">
@@ -125,115 +147,120 @@ function LandingPage() {
                     id="exam-code"
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    placeholder="exam-link-code or https://…/exam/…"
-                    className="h-12 rounded-xl pl-10"
+                    placeholder="…/exam/physics-midterm-k7q9x2m4pz"
+                    className="h-12 rounded-xl border-border bg-background pl-10 font-mono text-sm shadow-inner focus-visible:ring-brand"
                     autoComplete="off"
                     spellCheck={false}
                   />
                 </div>
-                <Button type="submit" className="h-12 rounded-full px-6">
+                <Button type="submit" className="h-12 shrink-0 rounded-full bg-brand px-7 font-semibold text-brand-foreground shadow-md shadow-brand/20 hover:bg-brand/90">
                   Go <ArrowRight className="size-4" />
                 </Button>
               </div>
-              {codeError ? (
-                <p role="alert" className="mt-3 text-sm text-destructive">{codeError}</p>
-              ) : (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  The code is the last part of your exam link, e.g.{" "}
-                  <span className="font-mono">…/exam/physics-midterm-k7q9x2m4pz</span>
-                </p>
-              )}
+              <p role={codeError ? "alert" : undefined} className={`mt-3 text-sm ${codeError ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+                {codeError ?? "Paste the full link or just the code after /exam/. Press Enter to continue."}
+              </p>
             </form>
-            <div className="mt-6 space-y-3 border-t border-border pt-6 text-sm">
-              <p className="flex items-start gap-2.5 text-muted-foreground">
-                <MailCheck className="mt-0.5 size-4 shrink-0" /> Your organizer shares the exam link and your personal password by email or message.
-              </p>
-              <p className="flex items-start gap-2.5 text-muted-foreground">
-                <MonitorCheck className="mt-0.5 size-4 shrink-0" /> Exams run on a laptop or desktop browser in full-screen mode.
-              </p>
-            </div>
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-5 py-14">
-        <p className="mono-label text-muted-foreground">Why {brand.appName}</p>
-        <h2 className="mt-2 text-3xl sm:text-4xl">Built for fair, focused exams</h2>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section id="features" aria-labelledby="features-heading" className="mx-auto max-w-6xl scroll-mt-20 px-5 py-16 sm:py-20">
+        <div className="max-w-2xl">
+          <p className="mono-label text-brand">Why {brand.appName}</p>
+          <h2 id="features-heading" className="mt-3 text-3xl tracking-tight sm:text-4xl">
+            Everything a fair exam needs. Nothing it doesn&apos;t.
+          </h2>
+        </div>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <FeatureCard
             icon={<LockKeyhole className="size-5" />}
             title="Secure login"
-            text="Every student gets a unique organizer-generated password that works only for their exam."
+            text="Unique organizer-generated passwords that work only for their own exam — never reusable elsewhere."
           />
           <FeatureCard
             icon={<AlarmClock className="size-5" />}
             title="Timed exams"
-            text="A live countdown keeps everyone on the same clock, with per-exam durations set by the organizer."
+            text="A live server-synced countdown with per-exam durations and optional start/end windows."
           />
           <FeatureCard
             icon={<ClipboardCheck className="size-5" />}
             title="Auto-submit"
-            text="Answers save continuously and the test submits itself the moment time runs out."
+            text="Answers save as you type and the test submits itself the moment time runs out."
           />
           <FeatureCard
             icon={<MousePointerClick className="size-5" />}
-            title="Proctored fairly"
-            text="Full-screen mode with tab-switch detection and warnings keeps the exam honest for everyone."
+            title="Fair proctoring"
+            text="Full-screen mode with tab-switch detection and warnings keeps every attempt honest."
           />
         </div>
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" className="border-y border-border bg-muted/30">
-        <div className="mx-auto max-w-6xl scroll-mt-20 px-5 py-14">
-          <p className="mono-label text-muted-foreground">How it works</p>
-          <h2 className="mt-2 text-3xl sm:text-4xl">Three steps to done</h2>
-          <ol className="mt-8 grid gap-4 md:grid-cols-3">
+      <section id="how-it-works" aria-labelledby="how-heading" className="border-y border-border bg-muted/30">
+        <div className="mx-auto max-w-6xl scroll-mt-20 px-5 py-16 sm:py-20">
+          <div className="max-w-2xl">
+            <p className="mono-label text-brand">How it works</p>
+            <h2 id="how-heading" className="mt-3 text-3xl tracking-tight sm:text-4xl">
+              From link to submitted in three steps
+            </h2>
+          </div>
+          <ol className="relative mt-10 grid gap-4 md:grid-cols-3">
+            <div aria-hidden="true" className="absolute left-0 right-0 top-11 hidden border-t-2 border-dashed border-border md:block" />
             <StepCard
               n="1"
-              title="Receive your link and password"
-              text="Your organizer sends you a private exam link plus your personal password."
+              title="Get your link & password"
+              text="Your organizer sends a private exam link plus your personal password."
             />
             <StepCard
               n="2"
-              title="Log in with name, email and password"
-              text="Open your exam's link and sign in with the details exactly as registered."
+              title="Log in on that page"
+              text="Open your exam's link and sign in with name, email and password."
             />
             <StepCard
               n="3"
-              title="Take the exam and submit"
-              text="Read the instructions, answer within the time limit, and submit — that's it."
+              title="Take it & submit"
+              text="Read the instructions, beat the timer, and submit. Done."
             />
           </ol>
         </div>
       </section>
 
       {/* Organizer CTA */}
-      <section className="mx-auto max-w-6xl px-5 py-14">
-        <div className="rounded-[22px] bg-brand px-6 py-10 text-center text-brand-foreground sm:px-12 sm:py-12">
-          <h2 className="text-3xl sm:text-4xl">Running an exam?</h2>
-          <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed opacity-90">
-            Create an exam, get a private link, add students with auto-generated passwords,
-            and watch results roll in — all from one dashboard.
-          </p>
-          <Link to="/panel-admin-login" className="mt-6 inline-flex h-12 items-center gap-2 rounded-full bg-brand-foreground px-7 text-sm font-medium text-brand transition-transform hover:scale-[1.02]">
-            Open organizer dashboard <ArrowRight className="size-4" />
-          </Link>
+      <section aria-labelledby="cta-heading" className="mx-auto max-w-6xl px-5 py-16 sm:py-20">
+        <div className="relative overflow-hidden rounded-[28px] bg-brand px-6 py-12 text-center text-brand-foreground shadow-xl shadow-brand/20 sm:px-12 sm:py-16">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.16),transparent_60%)]" />
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-20 bg-[linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_60%_80%_at_50%_50%,black,transparent)]" />
+          <div className="relative">
+            <p className="mono-label opacity-80">For organizers</p>
+            <h2 id="cta-heading" className="mx-auto mt-3 max-w-xl text-3xl tracking-tight sm:text-5xl">
+              Run your next exam in minutes
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-[16px] leading-relaxed opacity-90">
+              Create the exam, share one link, auto-generate every password,
+              upload questions, and watch results roll in.
+            </p>
+            <Link to="/panel-admin-login" className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-brand-foreground px-8 text-sm font-semibold text-brand shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl">
+              Open organizer dashboard <ArrowRight className="size-4" />
+            </Link>
+          </div>
         </div>
       </section>
 
       <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-5 py-8 text-sm text-muted-foreground sm:flex-row">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-8 text-sm text-muted-foreground sm:flex-row">
           <p className="flex items-center gap-2">
             <span className="grid size-7 place-items-center rounded-lg bg-brand font-mono text-[11px] font-semibold text-brand-foreground">
               {brand.logoMark}
             </span>
-            {footerCopyright()} · {brand.footerNote}
+            {footerCopyright()}
           </p>
-          <p>
-            Need help? Contact <a className="underline" href={`mailto:${brand.supportEmail}`}>{brand.supportEmail}</a>
-          </p>
+          <nav className="flex items-center gap-5" aria-label="Footer">
+            <a href="#join" className="transition-colors hover:text-foreground">Join exam</a>
+            <Link to="/panel-admin-login" className="transition-colors hover:text-foreground">Organizer login</Link>
+            <a className="transition-colors hover:text-foreground" href={`mailto:${brand.supportEmail}`}>Support</a>
+          </nav>
         </div>
       </footer>
     </main>
@@ -242,11 +269,11 @@ function LandingPage() {
 
 function FeatureCard({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
   return (
-    <div className="group rounded-[22px] border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md">
-      <span className="grid size-11 place-items-center rounded-2xl bg-brand/10 text-brand transition-colors group-hover:bg-brand group-hover:text-brand-foreground">
+    <div className="group relative overflow-hidden rounded-[22px] border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/[0.08]">
+      <span className="grid size-11 place-items-center rounded-2xl bg-brand/10 text-brand transition-colors duration-300 group-hover:bg-brand group-hover:text-brand-foreground">
         {icon}
       </span>
-      <h3 className="mt-4 text-xl">{title}</h3>
+      <h3 className="mt-5 text-xl tracking-tight">{title}</h3>
       <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">{text}</p>
     </div>
   );
@@ -254,11 +281,11 @@ function FeatureCard({ icon, title, text }: { icon: React.ReactNode; title: stri
 
 function StepCard({ n, title, text }: { n: string; title: string; text: string }) {
   return (
-    <li className="rounded-[22px] border border-border bg-card p-6 shadow-sm">
-      <span className="grid size-10 place-items-center rounded-full bg-brand font-mono text-sm font-semibold text-brand-foreground">
+    <li className="relative rounded-[22px] border border-border bg-card p-6 shadow-sm transition-shadow duration-300 hover:shadow-md sm:p-7">
+      <span className="relative grid size-11 place-items-center rounded-full bg-brand font-mono text-sm font-bold text-brand-foreground ring-4 ring-background">
         {n}
       </span>
-      <h3 className="mt-4 text-xl">{title}</h3>
+      <h3 className="mt-5 text-xl tracking-tight">{title}</h3>
       <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">{text}</p>
     </li>
   );

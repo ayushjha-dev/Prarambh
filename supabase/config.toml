@@ -1,0 +1,4 @@
+# Linked Supabase project. After creating a new project, run:
+#   supabase link --project-ref <new-project-ref>
+# which rewrites project_id below.
+project_id = "your-new-project-ref"

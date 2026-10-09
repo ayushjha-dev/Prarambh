@@ -45,7 +45,7 @@ function AdminLogin() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        navigate({ to: "/panel-admin" });
+        navigate({ to: "/panel-admin", search: { view: "dashboard" } });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign in failed.");

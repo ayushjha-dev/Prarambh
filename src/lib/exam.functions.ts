@@ -17,6 +17,8 @@ export type SafeQuestion = {
   topic: string;
   subtopic?: string;
   difficulty?: string;
+  qtype?: string;
+  marks?: number;
   question: string;
   option_a: string;
   option_b: string;
@@ -32,6 +34,8 @@ export type ExamMeta = {
   marks_wrong: number;
   max_marks: number;
   duration_minutes: number;
+  passing_marks: number | null;
+  total_marks: number | null;
 };
 
 export type ExamPhase = "live" | "upcoming" | "ended" | "disabled";
@@ -72,6 +76,8 @@ function stripQuestions(data: any): SafeQuestion[] {
     topic: String(q.topic ?? ""),
     subtopic: q.subtopic ? String(q.subtopic) : undefined,
     difficulty: q.difficulty ? String(q.difficulty) : undefined,
+    qtype: q.qtype ? String(q.qtype) : undefined,
+    marks: q.marks != null && q.marks !== "" ? Number(q.marks) : undefined,
     question: String(q.question ?? ""),
     option_a: String(q.option_a ?? ""),
     option_b: String(q.option_b ?? ""),
@@ -91,8 +97,10 @@ function readMeta(data: any, exam: any): ExamMeta {
     total_questions: total,
     marks_correct: mc,
     marks_wrong: mw,
-    max_marks: Number(m.max_marks ?? total * mc),
+    max_marks: Number(exam?.total_marks ?? m.max_marks ?? total * mc),
     duration_minutes: Number(exam?.duration_minutes ?? m.duration_minutes ?? 45),
+    passing_marks: exam?.passing_marks == null ? null : Number(exam.passing_marks),
+    total_marks: exam?.total_marks == null ? null : Number(exam.total_marks),
   };
 }
 
@@ -197,13 +205,29 @@ export const loginExamParticipant = createServerFn({ method: "POST" })
       throw new Error("Too many failed attempts. Please try again in a few minutes.");
     }
 
-    const candidate = crypto
-      .createHash("sha256")
-      .update(`${participant.password_salt}${data.password}`)
-      .digest("hex");
-    const expected = Buffer.from(participant.password_hash, "hex");
-    const actual = Buffer.from(candidate, "hex");
-    const match = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+    // Dual verification: bcrypt rows (salt === "bcrypt" or $2* hash) vs the
+    // legacy salted-sha256 rows. Both store hashes only — never plain text.
+    let match = false;
+    if (
+      participant.password_salt === "bcrypt" ||
+      String(participant.password_hash ?? "").startsWith("$2")
+    ) {
+      try {
+        const mod: any = await import("bcryptjs");
+        const bcrypt = mod.default ?? mod;
+        match = await bcrypt.compare(data.password, participant.password_hash);
+      } catch {
+        match = false;
+      }
+    } else {
+      const candidate = crypto
+        .createHash("sha256")
+        .update(`${participant.password_salt}${data.password}`)
+        .digest("hex");
+      const expected = Buffer.from(participant.password_hash, "hex");
+      const actual = Buffer.from(candidate, "hex");
+      match = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+    }
 
     if (!match) {
       const failed = Number(participant.failed_attempts ?? 0) + 1;
@@ -353,11 +377,16 @@ export const saveAnswer = createServerFn({ method: "POST" })
         slug: slugSchema,
         token: z.string().uuid(),
         questionId: z.number().int(),
-        option: z.enum(["A", "B", "C", "D"]).nullable(),
+        // Single letter ("B") or sorted multi set ("A,C") for multi-correct.
+        option: z
+          .string()
+          .regex(/^[A-D](,[A-D])*$/)
+          .nullable(),
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
+    const normalized = data.option ? [...new Set(data.option.split(","))].sort().join(",") : null;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: p } = await supabaseAdmin
       .from("participants")
@@ -372,7 +401,7 @@ export const saveAnswer = createServerFn({ method: "POST" })
       {
         participant_id: p.id,
         question_id: data.questionId,
-        selected_option: data.option,
+        selected_option: normalized,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "participant_id,question_id" },

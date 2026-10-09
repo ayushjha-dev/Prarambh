@@ -7,6 +7,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 export const Route = createFileRoute("/organizer")({
   ssr: false,
   beforeLoad: () => {
-    throw redirect({ to: "/panel-admin" });
+    throw redirect({ to: "/panel-admin", search: { view: "dashboard" } });
   },
 });

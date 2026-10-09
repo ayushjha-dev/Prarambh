@@ -47,12 +47,14 @@ function ExamPage() {
   const [questions, setQuestions] = useState<SafeQuestion[]>([]);
   const [meta, setMeta] = useState<ExamMeta | null>(null);
   const [examTitle, setExamTitle] = useState("");
-  const [answers, setAnswers] = useState<Record<number, Letter>>({});
+  const [answers, setAnswers] = useState<Record<number, string>>({});
   const [visited, setVisited] = useState<Record<number, boolean>>({});
   const [current, setCurrent] = useState(0);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [violations, setViolations] = useState(0);
-  const [blocked, setBlocked] = useState<"none" | "fullscreen" | "violation" | "terminated">("none");
+  const [blocked, setBlocked] = useState<"none" | "fullscreen" | "violation" | "terminated">(
+    "none",
+  );
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const isPhone = useIsPhone();
@@ -103,7 +105,7 @@ function ExamPage() {
     setExamTitle(state.examTitle);
     setViolations(state.violations);
     setQuestions(state.questions);
-    setAnswers((prev) => ({ ...(state.answers as Record<number, Letter>), ...prev }));
+    setAnswers((prev) => ({ ...(state.answers as Record<number, string>), ...prev }));
   }, [fetchState, goSubmitted, navigate, session, slug]);
 
   // initial load
@@ -210,12 +212,11 @@ function ExamPage() {
     };
   }, [handleViolation, isPhone, loading]);
 
-
   useEffect(() => {
     if (questions.length) setVisited((v) => ({ ...v, [questions[current]!.id]: true }));
   }, [current, questions]);
 
-  function queueSave(questionId: number, option: Letter) {
+  function queueSave(questionId: number, option: string) {
     if (!session) return;
     clearTimeout(saveTimers.current[questionId]);
     saveTimers.current[questionId] = setTimeout(() => {
@@ -232,6 +233,16 @@ function ExamPage() {
   function selectOption(questionId: number, option: Letter) {
     setAnswers((a) => ({ ...a, [questionId]: option }));
     queueSave(questionId, option);
+  }
+
+  /** Multi-correct questions: toggle one letter in the sorted answer set. */
+  function toggleOption(questionId: number, option: Letter) {
+    const current = answers[questionId]?.split(",").filter(Boolean) ?? [];
+    const next = current.includes(option)
+      ? current.filter((l) => l !== option)
+      : [...current, option].sort();
+    setAnswers((a) => ({ ...a, [questionId]: next.join(",") }));
+    if (next.length) queueSave(questionId, next.join(","));
   }
 
   async function returnToFullscreen() {
@@ -286,9 +297,15 @@ function ExamPage() {
       </header>
 
       <div className="relative flex min-h-0 flex-1 overflow-y-auto bg-muted/20">
-        <div className="pointer-events-none absolute inset-0 grid grid-cols-3 content-around gap-y-10 overflow-hidden px-2 opacity-[0.055] sm:grid-cols-5" aria-hidden="true">
+        <div
+          className="pointer-events-none absolute inset-0 grid grid-cols-3 content-around gap-y-10 overflow-hidden px-2 opacity-[0.055] sm:grid-cols-5"
+          aria-hidden="true"
+        >
           {Array.from({ length: 35 }, (_, index) => (
-            <span key={index} className="rotate-[-24deg] select-none text-center font-mono text-xl font-semibold text-brand sm:text-2xl">
+            <span
+              key={index}
+              className="rotate-[-24deg] select-none text-center font-mono text-xl font-semibold text-brand sm:text-2xl"
+            >
               {watermark.slice(0, 12)}
             </span>
           ))}
@@ -310,15 +327,25 @@ function ExamPage() {
               </p>
 
               <div className="mt-7 space-y-3">
+                {q.qtype === "multi" ? (
+                  <p className="mono-label text-muted-foreground">Select all correct options</p>
+                ) : null}
                 {LETTERS.map((letter) => {
                   const text = q[`option_${letter.toLowerCase()}` as keyof SafeQuestion] as string;
-                  const selected = answers[q.id] === letter;
+                  // True/False questions only carry two options; skip empties.
+                  if (!String(text ?? "").trim()) return null;
+                  const isMulti = q.qtype === "multi";
+                  const selected = isMulti
+                    ? (answers[q.id]?.split(",").filter(Boolean) ?? []).includes(letter)
+                    : answers[q.id] === letter;
                   return (
                     <Button
                       key={letter}
                       type="button"
                       variant="outline"
-                      onClick={() => selectOption(q.id, letter)}
+                      onClick={() =>
+                        isMulti ? toggleOption(q.id, letter) : selectOption(q.id, letter)
+                      }
                       className={`h-auto min-h-16 w-full justify-start whitespace-normal rounded-lg px-4 py-3 text-left text-base font-normal shadow-none ${
                         selected
                           ? "border-brand bg-pale-green hover:bg-pale-green"
@@ -429,9 +456,7 @@ function ExamPage() {
               </>
             ) : blocked === "violation" ? (
               <>
-                <p className="mono-label text-destructive">
-                  Violation {violations} of 3
-                </p>
+                <p className="mono-label text-destructive">Violation {violations} of 3</p>
                 <h2 className="mt-3 text-3xl text-destructive">Warning</h2>
                 <p className="mt-3 text-[15px]">
                   Leaving full-screen or switching tabs during the exam is not allowed.{" "}

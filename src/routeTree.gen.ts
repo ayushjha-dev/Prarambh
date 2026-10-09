@@ -15,6 +15,10 @@ import { Route as PanelAdminRouteImport } from './routes/panel-admin'
 import { Route as PanelAdminLoginRouteImport } from './routes/panel-admin-login'
 import { Route as SubmittedRouteImport } from './routes/submitted'
 import { Route as ExamIndexRouteImport } from './routes/exam/index'
+import { Route as OrganizerDashboardRouteImport } from './routes/organizer.dashboard'
+import { Route as OrganizerExamsRouteImport } from './routes/organizer.exams'
+import { Route as OrganizerParticipantsRouteImport } from './routes/organizer.participants'
+import { Route as OrganizerResultsRouteImport } from './routes/organizer.results'
 import { Route as ExamSlugIndexRouteImport } from './routes/exam/$slug/index'
 import { Route as ExamSlugInstructionsRouteImport } from './routes/exam/$slug/instructions'
 import { Route as ExamSlugStartRouteImport } from './routes/exam/$slug/start'
@@ -50,6 +54,26 @@ const ExamIndexRoute = ExamIndexRouteImport.update({
   path: '/exam/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrganizerDashboardRoute = OrganizerDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => OrganizerRoute,
+} as any)
+const OrganizerExamsRoute = OrganizerExamsRouteImport.update({
+  id: '/exams',
+  path: '/exams',
+  getParentRoute: () => OrganizerRoute,
+} as any)
+const OrganizerParticipantsRoute = OrganizerParticipantsRouteImport.update({
+  id: '/participants',
+  path: '/participants',
+  getParentRoute: () => OrganizerRoute,
+} as any)
+const OrganizerResultsRoute = OrganizerResultsRouteImport.update({
+  id: '/results',
+  path: '/results',
+  getParentRoute: () => OrganizerRoute,
+} as any)
 const ExamSlugIndexRoute = ExamSlugIndexRouteImport.update({
   id: '/exam/$slug/',
   path: '/exam/$slug/',
@@ -73,10 +97,14 @@ const ExamSlugSubmittedRoute = ExamSlugSubmittedRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/organizer': typeof OrganizerRoute
+  '/organizer': typeof OrganizerRouteWithChildren
   '/panel-admin': typeof PanelAdminRoute
   '/panel-admin-login': typeof PanelAdminLoginRoute
   '/submitted': typeof SubmittedRoute
+  '/organizer/dashboard': typeof OrganizerDashboardRoute
+  '/organizer/exams': typeof OrganizerExamsRoute
+  '/organizer/participants': typeof OrganizerParticipantsRoute
+  '/organizer/results': typeof OrganizerResultsRoute
   '/exam/': typeof ExamIndexRoute
   '/exam/$slug/instructions': typeof ExamSlugInstructionsRoute
   '/exam/$slug/start': typeof ExamSlugStartRoute
@@ -85,10 +113,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/organizer': typeof OrganizerRoute
+  '/organizer': typeof OrganizerRouteWithChildren
   '/panel-admin': typeof PanelAdminRoute
   '/panel-admin-login': typeof PanelAdminLoginRoute
   '/submitted': typeof SubmittedRoute
+  '/organizer/dashboard': typeof OrganizerDashboardRoute
+  '/organizer/exams': typeof OrganizerExamsRoute
+  '/organizer/participants': typeof OrganizerParticipantsRoute
+  '/organizer/results': typeof OrganizerResultsRoute
   '/exam': typeof ExamIndexRoute
   '/exam/$slug/instructions': typeof ExamSlugInstructionsRoute
   '/exam/$slug/start': typeof ExamSlugStartRoute
@@ -98,10 +130,14 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/organizer': typeof OrganizerRoute
+  '/organizer': typeof OrganizerRouteWithChildren
   '/panel-admin': typeof PanelAdminRoute
   '/panel-admin-login': typeof PanelAdminLoginRoute
   '/submitted': typeof SubmittedRoute
+  '/organizer/dashboard': typeof OrganizerDashboardRoute
+  '/organizer/exams': typeof OrganizerExamsRoute
+  '/organizer/participants': typeof OrganizerParticipantsRoute
+  '/organizer/results': typeof OrganizerResultsRoute
   '/exam/': typeof ExamIndexRoute
   '/exam/$slug/instructions': typeof ExamSlugInstructionsRoute
   '/exam/$slug/start': typeof ExamSlugStartRoute
@@ -116,6 +152,10 @@ export interface FileRouteTypes {
     | '/panel-admin'
     | '/panel-admin-login'
     | '/submitted'
+    | '/organizer/dashboard'
+    | '/organizer/exams'
+    | '/organizer/participants'
+    | '/organizer/results'
     | '/exam/'
     | '/exam/$slug/instructions'
     | '/exam/$slug/start'
@@ -128,6 +168,10 @@ export interface FileRouteTypes {
     | '/panel-admin'
     | '/panel-admin-login'
     | '/submitted'
+    | '/organizer/dashboard'
+    | '/organizer/exams'
+    | '/organizer/participants'
+    | '/organizer/results'
     | '/exam'
     | '/exam/$slug/instructions'
     | '/exam/$slug/start'
@@ -140,6 +184,10 @@ export interface FileRouteTypes {
     | '/panel-admin'
     | '/panel-admin-login'
     | '/submitted'
+    | '/organizer/dashboard'
+    | '/organizer/exams'
+    | '/organizer/participants'
+    | '/organizer/results'
     | '/exam/'
     | '/exam/$slug/instructions'
     | '/exam/$slug/start'
@@ -149,7 +197,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  OrganizerRoute: typeof OrganizerRoute
+  OrganizerRoute: typeof OrganizerRouteWithChildren
   PanelAdminRoute: typeof PanelAdminRoute
   PanelAdminLoginRoute: typeof PanelAdminLoginRoute
   SubmittedRoute: typeof SubmittedRoute
@@ -204,6 +252,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExamIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/organizer/dashboard': {
+      id: '/organizer/dashboard'
+      path: '/dashboard'
+      fullPath: '/organizer/dashboard'
+      preLoaderRoute: typeof OrganizerDashboardRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
+    '/organizer/exams': {
+      id: '/organizer/exams'
+      path: '/exams'
+      fullPath: '/organizer/exams'
+      preLoaderRoute: typeof OrganizerExamsRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
+    '/organizer/participants': {
+      id: '/organizer/participants'
+      path: '/participants'
+      fullPath: '/organizer/participants'
+      preLoaderRoute: typeof OrganizerParticipantsRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
+    '/organizer/results': {
+      id: '/organizer/results'
+      path: '/results'
+      fullPath: '/organizer/results'
+      preLoaderRoute: typeof OrganizerResultsRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
     '/exam/$slug/': {
       id: '/exam/$slug/'
       path: '/exam/$slug'
@@ -235,9 +311,27 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface OrganizerRouteChildren {
+  OrganizerDashboardRoute: typeof OrganizerDashboardRoute
+  OrganizerExamsRoute: typeof OrganizerExamsRoute
+  OrganizerParticipantsRoute: typeof OrganizerParticipantsRoute
+  OrganizerResultsRoute: typeof OrganizerResultsRoute
+}
+
+const OrganizerRouteChildren: OrganizerRouteChildren = {
+  OrganizerDashboardRoute: OrganizerDashboardRoute,
+  OrganizerExamsRoute: OrganizerExamsRoute,
+  OrganizerParticipantsRoute: OrganizerParticipantsRoute,
+  OrganizerResultsRoute: OrganizerResultsRoute,
+}
+
+const OrganizerRouteWithChildren = OrganizerRoute._addFileChildren(
+  OrganizerRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  OrganizerRoute: OrganizerRoute,
+  OrganizerRoute: OrganizerRouteWithChildren,
   PanelAdminRoute: PanelAdminRoute,
   PanelAdminLoginRoute: PanelAdminLoginRoute,
   SubmittedRoute: SubmittedRoute,

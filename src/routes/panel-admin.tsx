@@ -68,7 +68,7 @@ function AdminPanel() {
     <main className="min-h-screen bg-background md:flex">
       <OrganizerSidebar view={view} onNavigate={go} onLogout={() => void signOut()} />
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 pb-24 md:pb-0">
         {questionsExam ? (
           <QuestionsEditor exam={questionsExam} onBack={() => setQuestionsExam(null)} />
         ) : view === "dashboard" ? (

@@ -8,6 +8,8 @@ export function ConfirmModal(props: {
   confirmLabel?: string;
   tone?: "danger" | "default";
   pending?: boolean;
+  /** Optional middle action (e.g. a safe alternative to the destructive one). */
+  extraAction?: { label: string; onClick: () => void } | undefined;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -22,7 +24,7 @@ export function ConfirmModal(props: {
       >
         <h2 className="text-2xl">{props.title}</h2>
         <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">{props.body}</p>
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
           <Button
             variant="ghost"
             className="rounded-[32px]"
@@ -31,6 +33,16 @@ export function ConfirmModal(props: {
           >
             Cancel
           </Button>
+          {props.extraAction ? (
+            <Button
+              variant="secondary"
+              className="rounded-[32px]"
+              disabled={props.pending}
+              onClick={props.extraAction.onClick}
+            >
+              {props.extraAction.label}
+            </Button>
+          ) : null}
           <Button
             variant={props.tone === "danger" ? "destructive" : "default"}
             className="rounded-[32px]"

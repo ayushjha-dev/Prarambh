@@ -128,6 +128,8 @@ export function ExamsView(props: { onAddQuestions: (exam: AdminExam) => void }) 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ["admin-exams"] });
     await queryClient.invalidateQueries({ queryKey: ["organizer-stats"] });
+    await queryClient.invalidateQueries({ queryKey: ["organizer-participants"] });
+    await queryClient.invalidateQueries({ queryKey: ["admin-dashboard"] });
   }
 
   function openCreate() {
@@ -519,33 +521,25 @@ export function ExamsView(props: { onAddQuestions: (exam: AdminExam) => void }) 
         confirmLabel={deleteWarn ? "Delete anyway" : "Delete"}
         tone="danger"
         pending={deleting}
+        extraAction={
+          deleteWarn && deleteTarget
+            ? {
+                label: "Disable instead (keep results)",
+                onClick: () => {
+                  const target = deleteTarget;
+                  setDeleteTarget(null);
+                  setDeleteWarn(null);
+                  void handleToggle(target);
+                },
+              }
+            : undefined
+        }
         onCancel={() => {
           setDeleteTarget(null);
           setDeleteWarn(null);
         }}
         onConfirm={() => void handleDelete(Boolean(deleteWarn))}
       />
-      {deleteWarn && deleteTarget ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center px-5 pb-6">
-          <div className="w-full max-w-md rounded-[22px] border border-border bg-card p-5 shadow-xl">
-            <p className="text-sm">Students already attempted this exam. Prefer keeping results?</p>
-            <div className="mt-3 flex justify-end gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="rounded-full"
-                onClick={async () => {
-                  await handleToggle(deleteTarget);
-                  setDeleteTarget(null);
-                  setDeleteWarn(null);
-                }}
-              >
-                Disable instead (keep results)
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

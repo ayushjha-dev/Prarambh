@@ -210,20 +210,21 @@ export function ResultsView(props: { initialExamId?: string | null }) {
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Label className="mono-label text-muted-foreground">Exam</Label>
-        <select
-          value={selectedId}
-          onChange={(e) => setExamId(e.target.value)}
-          className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
-        >
-          {exams.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.title}
-            </option>
-          ))}
-        </select>
-        {!exams.length ? (
+        {exams.length ? (
+          <select
+            value={selectedId}
+            onChange={(e) => setExamId(e.target.value)}
+            className="h-10 min-w-52 rounded-xl border border-input bg-background px-3 text-sm"
+          >
+            {exams.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.title}
+              </option>
+            ))}
+          </select>
+        ) : (
           <span className="text-sm text-muted-foreground">No exams yet — create one first.</span>
-        ) : null}
+        )}
       </div>
 
       {!selectedId ? null : (

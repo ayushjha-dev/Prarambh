@@ -383,20 +383,21 @@ export function ParticipantsView() {
       {/* Exam picker */}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Label className="mono-label text-muted-foreground">Exam for uploads</Label>
-        <select
-          value={effectiveExamId}
-          onChange={(e) => setExamId(e.target.value)}
-          className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
-        >
-          {exams.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.title}
-            </option>
-          ))}
-        </select>
-        {!exams.length ? (
+        {exams.length ? (
+          <select
+            value={effectiveExamId}
+            onChange={(e) => setExamId(e.target.value)}
+            className="h-10 min-w-52 rounded-xl border border-input bg-background px-3 text-sm"
+          >
+            {exams.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.title}
+              </option>
+            ))}
+          </select>
+        ) : (
           <span className="text-sm text-muted-foreground">No exams yet — create one first.</span>
-        ) : null}
+        )}
       </div>
 
       {/* Upload */}

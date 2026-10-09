@@ -87,7 +87,7 @@ function readMeta(data: any, exam: any): ExamMeta {
   const mw = Number(exam?.marks_wrong ?? m.marks_wrong ?? -0.5);
   return {
     event: String(exam?.title ?? m.event ?? "Online Exam"),
-    organiser: String(m.organiser ?? "ExamPortal"),
+    organiser: String(m.organiser ?? "Prarambh"),
     total_questions: total,
     marks_correct: mc,
     marks_wrong: mw,
@@ -96,7 +96,11 @@ function readMeta(data: any, exam: any): ExamMeta {
   };
 }
 
-function phaseOf(exam: { is_enabled: boolean; starts_at: string | null; ends_at: string | null }): ExamPhase {
+function phaseOf(exam: {
+  is_enabled: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+}): ExamPhase {
   if (!exam.is_enabled) return "disabled";
   const now = Date.now();
   if (exam.starts_at && now < new Date(exam.starts_at).getTime()) return "upcoming";
@@ -147,7 +151,10 @@ export const getExamPublic = createServerFn({ method: "POST" })
     const exam = await getExamBySlug(supabaseAdmin, data.slug);
     if (!exam) throw new Error("EXAM_NOT_FOUND");
     const doc = await getQuestionDoc(supabaseAdmin, exam, null);
-    return toPublicExam(exam, Array.isArray((doc as any)?.questions) ? (doc as any).questions.length : 0);
+    return toPublicExam(
+      exam,
+      Array.isArray((doc as any)?.questions) ? (doc as any).questions.length : 0,
+    );
   });
 
 export const loginExamParticipant = createServerFn({ method: "POST" })
@@ -175,7 +182,9 @@ export const loginExamParticipant = createServerFn({ method: "POST" })
     const email = data.email.toLowerCase();
     const { data: participant } = await supabaseAdmin
       .from("participants")
-      .select("id, name, email, session_token, status, password_salt, password_hash, failed_attempts, locked_until")
+      .select(
+        "id, name, email, session_token, status, password_salt, password_hash, failed_attempts, locked_until",
+      )
       .eq("exam_id", exam.id)
       .eq("email", email)
       .maybeSingle();
@@ -226,7 +235,10 @@ export const loginExamParticipant = createServerFn({ method: "POST" })
       })
       .eq("id", participant.id);
 
-    return { token: participant.session_token as string, name: (participant.name ?? data.name.trim()) as string };
+    return {
+      token: participant.session_token as string,
+      name: (participant.name ?? data.name.trim()) as string,
+    };
   });
 
 /** Exam brief for the instructions page (no questions leaked before start). */

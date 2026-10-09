@@ -4,11 +4,11 @@
  * is a one-file edit. Colors stay in the design system (src/styles.css).
  */
 export const brand = {
-  /** Neutral placeholder product name. */
-  appName: "ExamPortal",
+  /** Product name. */
+  appName: "Prarambh",
   tagline: "Secure, Seamless Online Exams",
   /** Short mark rendered in headers when no image logo is set. */
-  logoMark: "EP",
+  logoMark: "P",
   /** Generic footer owner placeholder. */
   footerNote: "Secure online examination platform",
   supportEmail: "support@example.com",

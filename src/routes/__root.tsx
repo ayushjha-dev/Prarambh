@@ -78,15 +78,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "ExamPortal — Secure Online Exams" },
+      { title: "Prarambh — Secure Online Exams" },
       {
         name: "description",
-        content: "ExamPortal: secure, timed online examinations with per-exam login links.",
+        content: "Prarambh: secure, timed online examinations with per-exam login links.",
       },
-      { property: "og:title", content: "ExamPortal — Secure Online Exams" },
+      { property: "og:title", content: "Prarambh — Secure Online Exams" },
       {
         property: "og:description",
-        content: "ExamPortal: secure, timed online examinations with per-exam login links.",
+        content: "Prarambh: secure, timed online examinations with per-exam login links.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

@@ -97,8 +97,9 @@ Built with **TanStack Start** (SSR + server functions), **React 19**,
 - 🏠 **Landing page** — marketing-style home with exam-link/code lookup,
   features, how-it-works, and an organizer CTA; responsive and dark-mode
   friendly
-- 📱 **Desktop-first** — phones are blocked with a friendly notice (full-screen
-  proctoring needs a desktop browser)
+- 📱 **PWA + phone support** — installable app (`manifest.webmanifest` +
+  versioned service worker); phones pass a fairness notice and take the exam
+  without the full-screen lock, with tab-switch detection still enforced
 - 🔌 **Zero-config local dev** — one `.env`, one SQL migration, one command
 
 ## Architecture
@@ -428,11 +429,12 @@ sheets, CSV exports, plus **Reset exam** (clears answers/timer/violations) and
 
 ## Student Guide
 
-1. Open the exam link from your organizer **on a laptop or desktop** (phones
-   are blocked — full-screen proctoring needs a desktop browser).
+1. Open the exam link from your organizer **on your phone or computer**
+   (install the app to your home screen for the best phone experience).
 2. Log in with your **name, email, and the password your organizer shared**.
    Passwords work only for your exam.
-3. Read the instructions, tick consent, click **Start** and allow full-screen.
+3. Read the instructions, tick consent, click **Start** and allow full-screen
+   (desktop browsers).
 4. Answer within the timer. Stay in full-screen — leaving it, switching tabs,
    or opening another app counts as a violation; **three violations submit
    the test automatically**. Reloading is safe (answers persist, clock keeps
@@ -608,8 +610,9 @@ full rebrand is a one-file edit plus a palette swap.
 ## FAQ
 
 **Can students take the exam on a phone?**
-No. Phones are blocked by `DesktopOnly.tsx` — full-screen proctoring requires
-a desktop browser. Tablets in landscape may work but aren't the tested target.
+Yes. The app is an installable PWA; phones see a fairness notice, then take
+the exam without the full-screen lock (tab-switch/blur detection still counts
+violations). Desktop remains the smoothest, fully proctored option.
 
 **What stops a student from Googling answers?**
 Full-screen enforcement plus tab-switch/blur detection: each violation is

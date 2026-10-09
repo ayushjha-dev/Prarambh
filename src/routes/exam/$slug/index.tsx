@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { brand, footerCopyright } from "@/config/brand";
-import { DesktopOnlyScreen, useIsPhone } from "@/components/DesktopOnly";
+import { MobileNoticeScreen, useMobileAck } from "@/components/DesktopOnly";
 import { getExamPublic, loginExamParticipant, type PublicExam } from "@/lib/exam.functions";
 import { loadSessionForExam, saveSessionForExam } from "@/lib/exam-session";
 
@@ -17,7 +17,10 @@ export const Route = createFileRoute("/exam/$slug/")({
   head: () => ({
     meta: [
       { title: `Exam login — ${brand.appName}` },
-      { name: "description", content: "Log in to your exam with your name, email and organizer-provided password." },
+      {
+        name: "description",
+        content: "Log in to your exam with your name, email and organizer-provided password.",
+      },
       { name: "robots", content: "noindex,nofollow" },
     ],
   }),
@@ -41,7 +44,7 @@ function ExamLoginPage() {
   const navigate = useNavigate();
   const fetchExam = useServerFn(getExamPublic);
   const login = useServerFn(loginExamParticipant);
-  const isPhone = useIsPhone();
+  const [needsAck, ackMobile] = useMobileAck(slug);
 
   const [exam, setExam] = useState<PublicExam | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -74,7 +77,7 @@ function ExamLoginPage() {
       .finally(() => setLoadingExam(false));
   }, [fetchExam, slug]);
 
-  if (isPhone) return <DesktopOnlyScreen />;
+  if (needsAck) return <MobileNoticeScreen slug={slug} onContinue={ackMobile} />;
 
   if (loadingExam) {
     return (
@@ -90,8 +93,8 @@ function ExamLoginPage() {
         <p className="mono-label text-muted-foreground">{brand.appName}</p>
         <h1 className="mt-4 text-4xl leading-tight sm:text-5xl">Exam not found</h1>
         <p className="mt-4 max-w-md text-[16px] leading-relaxed text-muted-foreground">
-          This exam link is invalid, has been replaced, or has expired. Please check the link
-          with your organizer and try again.
+          This exam link is invalid, has been replaced, or has expired. Please check the link with
+          your organizer and try again.
         </p>
         <Link
           to="/"
@@ -169,13 +172,29 @@ function ExamLoginPage() {
             </p>
           ) : null}
           <dl className="mt-7 grid gap-3 sm:grid-cols-2">
-            <Detail icon={<AlarmClock className="size-4" />} label="Duration" value={`${exam.duration_minutes} minutes`} />
-            <Detail icon={<ListChecks className="size-4" />} label="Questions" value={exam.total_questions ? String(exam.total_questions) : "—"} />
+            <Detail
+              icon={<AlarmClock className="size-4" />}
+              label="Duration"
+              value={`${exam.duration_minutes} minutes`}
+            />
+            <Detail
+              icon={<ListChecks className="size-4" />}
+              label="Questions"
+              value={exam.total_questions ? String(exam.total_questions) : "—"}
+            />
             {formatDateTime(exam.starts_at) ? (
-              <Detail icon={<CalendarDays className="size-4" />} label="Starts" value={formatDateTime(exam.starts_at) as string} />
+              <Detail
+                icon={<CalendarDays className="size-4" />}
+                label="Starts"
+                value={formatDateTime(exam.starts_at) as string}
+              />
             ) : null}
             {formatDateTime(exam.ends_at) ? (
-              <Detail icon={<CalendarDays className="size-4" />} label="Ends" value={formatDateTime(exam.ends_at) as string} />
+              <Detail
+                icon={<CalendarDays className="size-4" />}
+                label="Ends"
+                value={formatDateTime(exam.ends_at) as string}
+              />
             ) : null}
           </dl>
           {exam.phase === "upcoming" ? (
@@ -196,14 +215,19 @@ function ExamLoginPage() {
         </section>
 
         {/* Login form */}
-        <section aria-label="Student login" className="rounded-[22px] border border-border bg-card p-6 sm:p-8">
+        <section
+          aria-label="Student login"
+          className="rounded-[22px] border border-border bg-card p-6 sm:p-8"
+        >
           <h2 className="text-2xl">Student login</h2>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Use the name, email and password registered for this exam.
           </p>
           <form onSubmit={onSubmit} className="mt-6">
             <div className="space-y-2">
-              <Label htmlFor="name" className="mono-label text-muted-foreground">Full name</Label>
+              <Label htmlFor="name" className="mono-label text-muted-foreground">
+                Full name
+              </Label>
               <Input
                 id="name"
                 value={name}
@@ -214,7 +238,9 @@ function ExamLoginPage() {
               />
             </div>
             <div className="mt-5 space-y-2">
-              <Label htmlFor="email" className="mono-label text-muted-foreground">Email address</Label>
+              <Label htmlFor="email" className="mono-label text-muted-foreground">
+                Email address
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -250,7 +276,11 @@ function ExamLoginPage() {
                 </button>
               </div>
             </div>
-            <Button type="submit" disabled={busy || blocked} className="mt-7 h-12 w-full rounded-[32px] text-sm font-medium">
+            <Button
+              type="submit"
+              disabled={busy || blocked}
+              className="mt-7 h-12 w-full rounded-[32px] text-sm font-medium"
+            >
               {busy ? "Signing you in…" : "Continue to instructions"}
             </Button>
             <p className="mt-4 text-center text-xs text-muted-foreground">

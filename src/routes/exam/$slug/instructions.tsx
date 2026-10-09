@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { brand } from "@/config/brand";
-import { DesktopOnlyScreen, useIsPhone } from "@/components/DesktopOnly";
+import { MobileNoticeScreen, useIsPhone, useMobileAck } from "@/components/DesktopOnly";
 import { getExamBrief, startExam } from "@/lib/exam.functions";
 import { clearSessionForExam, loadSessionForExam } from "@/lib/exam-session";
 
@@ -40,6 +40,7 @@ function InstructionsPage() {
   } | null>(null);
   const session = typeof window !== "undefined" ? loadSessionForExam(slug) : null;
   const isPhone = useIsPhone();
+  const [needsAck, ackMobile] = useMobileAck(slug);
 
   useEffect(() => {
     if (!session) {
@@ -64,21 +65,23 @@ function InstructionsPage() {
       });
   }, [slug, navigate, brief, session?.token]);
 
-  if (isPhone) return <DesktopOnlyScreen />;
+  if (needsAck) return <MobileNoticeScreen slug={slug} onContinue={ackMobile} />;
 
   async function handleStart() {
     if (!session) return;
     setError(null);
     setBusy(true);
     try {
-      if (!document.documentElement.requestFullscreen) {
-        setError("Your browser does not support full-screen mode. Please use a desktop browser.");
-        return;
-      }
-      await document.documentElement.requestFullscreen();
-      if (!document.fullscreenElement) {
-        setError("Full-screen was blocked. Please allow full-screen and try again.");
-        return;
+      // Full-screen proctoring on devices that support it; phones and other
+      // browsers without the API proceed without the lock (tab-switch
+      // detection still applies during the attempt).
+      const canLock = Boolean(document.documentElement.requestFullscreen) && !isPhone;
+      if (canLock) {
+        await document.documentElement.requestFullscreen();
+        if (!document.fullscreenElement) {
+          setError("Full-screen was blocked. Please allow full-screen and try again.");
+          return;
+        }
       }
       await start({ data: { slug, token: session.token } });
       navigate({ to: "/exam/$slug/start", params: { slug } });

@@ -15,8 +15,7 @@ import {
   type SafeQuestion,
 } from "@/lib/exam.functions";
 import { formatClock, loadSessionForExam, playViolationAlarm } from "@/lib/exam-session";
-import { DesktopOnlyScreen, useIsPhone } from "@/components/DesktopOnly";
-
+import { MobileNoticeScreen, useIsPhone, useMobileAck } from "@/components/DesktopOnly";
 export const Route = createFileRoute("/exam/$slug/start")({
   ssr: false,
   head: () => ({
@@ -58,6 +57,14 @@ function ExamPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const isPhone = useIsPhone();
+  const [needsAck, ackMobile] = useMobileAck(slug);
+  // Phones (and browsers without the Fullscreen API) take the exam without
+  // the full-screen lock; tab-switch detection still applies.
+  const canLockFullscreen =
+    typeof document !== "undefined" &&
+    Boolean(document.documentElement.requestFullscreen) &&
+    !isPhone;
+  const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
 
   const deadlineRef = useRef<number | null>(null);
   const armedRef = useRef(false);
@@ -110,7 +117,6 @@ function ExamPage() {
 
   // initial load
   useEffect(() => {
-    if (isPhone) return;
     if (!session) {
       navigate({ to: "/exam/$slug", params: { slug } });
       return;
@@ -125,7 +131,22 @@ function ExamPage() {
         }
       })
       .finally(() => setLoading(false));
-  }, [isPhone, navigate, session, slug, sync]);
+  }, [navigate, session, slug, sync]);
+
+  // connectivity banner (answers keep retrying; the timer is server-side)
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => {
+      setOnline(false);
+      toast.warning("You're offline. Answers will keep retrying until you're back.");
+    };
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
 
   // periodic resync with per-candidate jitter (avoids a synchronised burst)
   useEffect(() => {
@@ -168,12 +189,19 @@ function ExamPage() {
     }
   }, [flagViolation, goSubmitted, session, slug]);
 
-  // full-screen + tab-switch enforcement
+  // full-screen + tab-switch enforcement (full-screen lock only where supported)
   useEffect(() => {
-    if (loading || isPhone) return;
+    if (loading) return;
 
-    if (document.fullscreenElement) armedRef.current = true;
-    else setBlocked((b) => (b === "none" ? "fullscreen" : b));
+    if (!canLockFullscreen) {
+      // No lock possible: arm violation detection immediately so leaving the
+      // app/tab still counts, without ever demanding full-screen.
+      armedRef.current = true;
+    } else if (document.fullscreenElement) {
+      armedRef.current = true;
+    } else {
+      setBlocked((b) => (b === "none" ? "fullscreen" : b));
+    }
 
     const onFsChange = () => {
       if (document.fullscreenElement) {
@@ -210,7 +238,7 @@ function ExamPage() {
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("blur", onBlur);
     };
-  }, [handleViolation, isPhone, loading]);
+  }, [canLockFullscreen, handleViolation, loading]);
 
   useEffect(() => {
     if (questions.length) setVisited((v) => ({ ...v, [questions[current]!.id]: true }));
@@ -246,6 +274,10 @@ function ExamPage() {
   }
 
   async function returnToFullscreen() {
+    if (!canLockFullscreen) {
+      setBlocked("none");
+      return;
+    }
     try {
       await document.documentElement.requestFullscreen();
       setBlocked("none");
@@ -254,7 +286,7 @@ function ExamPage() {
     }
   }
 
-  if (isPhone) return <DesktopOnlyScreen />;
+  if (needsAck) return <MobileNoticeScreen slug={slug} onContinue={ackMobile} />;
 
   if (loading || !meta) {
     return (
@@ -295,6 +327,11 @@ function ExamPage() {
           </Button>
         </div>
       </header>
+      {!online ? (
+        <p role="alert" className="bg-coral px-4 py-2 text-center text-sm font-medium text-white">
+          You&apos;re offline — the timer keeps running on the server. Answers will keep retrying.
+        </p>
+      ) : null}
 
       <div className="relative flex min-h-0 flex-1 overflow-y-auto bg-muted/20">
         <div
@@ -459,7 +496,9 @@ function ExamPage() {
                 <p className="mono-label text-destructive">Violation {violations} of 3</p>
                 <h2 className="mt-3 text-3xl text-destructive">Warning</h2>
                 <p className="mt-3 text-[15px]">
-                  Leaving full-screen or switching tabs during the exam is not allowed.{" "}
+                  {canLockFullscreen
+                    ? "Leaving full-screen or switching tabs during the exam is not allowed. "
+                    : "Leaving this app or switching tabs during the exam is not allowed. "}
                   {3 - violations === 1
                     ? "One more violation will submit your test automatically."
                     : `${3 - violations} violations remaining before automatic submission.`}

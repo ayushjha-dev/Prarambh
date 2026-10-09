@@ -3,17 +3,24 @@ import { useState } from "react";
 import {
   AlarmClock,
   ArrowRight,
+  BarChart3,
   Check,
+  ChevronDown,
   ClipboardCheck,
+  Download,
+  FileUp,
   Link2,
   LockKeyhole,
   MousePointerClick,
   ShieldCheck,
+  Sparkles,
+  Users,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { brand, footerCopyright } from "@/config/brand";
+import { promptInstall, useInstallPrompt } from "@/lib/pwa";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -44,10 +51,41 @@ function extractSlug(input: string): string | null {
 
 const ASSURANCES = ["Private per-exam links", "Unique student passwords", "Auto-submit on timeout"];
 
+const STATS = [
+  { value: "100%", label: "Auto-graded results" },
+  { value: "3-step", label: "Link to submitted" },
+  { value: "0", label: "Accounts students need" },
+  { value: "24/7", label: "Take exams anytime" },
+];
+
+const FAQS = [
+  {
+    q: "How do I join my exam?",
+    a: "Open the private exam link your organizer shared, enter your name, email and the password they gave you, then click Start. No account or signup needed.",
+  },
+  {
+    q: "What happens if my time runs out?",
+    a: "Your answers save automatically as you go, and the test submits itself the moment the timer hits zero. Nothing is lost.",
+  },
+  {
+    q: "Can I take the exam on my phone?",
+    a: "Yes. Install the Prarambh app to your home screen for the best experience, open your exam link, and log in as usual. Phones can't lock into full-screen proctoring, so leaving the app or switching tabs still counts as a violation — a laptop or desktop remains the smoothest option.",
+  },
+  {
+    q: "What counts as a violation?",
+    a: "Leaving the exam — full-screen on desktop, or the app/tab on phones — counts as a violation. Three violations submit the test automatically — reloading the page itself is safe.",
+  },
+  {
+    q: "I forgot my password. What do I do?",
+    a: "Passwords are issued by your organizer. Ask them to regenerate yours — it takes them a few seconds from their dashboard.",
+  },
+];
+
 function LandingPage() {
   const navigate = useNavigate();
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   function goToExam(e: React.FormEvent) {
     e.preventDefault();
@@ -72,13 +110,28 @@ function LandingPage() {
             <span className="text-lg font-semibold tracking-tight">{brand.appName}</span>
           </Link>
           <nav className="flex items-center gap-1" aria-label="Primary">
-            <a href="#features" className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-block">
+            <a
+              href="#features"
+              className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-block"
+            >
               Features
             </a>
-            <a href="#how-it-works" className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-block">
+            <a
+              href="#how-it-works"
+              className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-block"
+            >
               How it works
             </a>
-            <Link to="/panel-admin-login" className="ml-1 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow">
+            <a
+              href="#faq"
+              className="hidden rounded-full px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-block"
+            >
+              FAQ
+            </a>
+            <Link
+              to="/panel-admin-login"
+              className="ml-1 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow"
+            >
               Organizer Login
             </Link>
           </nav>
@@ -93,7 +146,7 @@ function LandingPage() {
           <div className="absolute inset-0 bg-[linear-gradient(to_right,var(--color-border)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-border)_1px,transparent_1px)] bg-[size:56px_56px] opacity-40 [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent)]" />
         </div>
 
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-14 sm:pt-24 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-14 sm:pt-24 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
           <div>
             <p className="mono-label inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/[0.07] px-3.5 py-1.5 text-brand">
               <span className="relative flex size-2">
@@ -102,33 +155,59 @@ function LandingPage() {
               </span>
               Secure online examinations
             </p>
-            <h1 id="hero-heading" className="mt-6 text-5xl leading-[1.04] tracking-tight sm:text-6xl lg:text-7xl">
-              Secure, seamless <em className="text-brand">online exams</em>
+            <h1
+              id="hero-heading"
+              className="mt-6 text-5xl leading-[1.04] tracking-tight sm:text-6xl lg:text-7xl"
+            >
+              Exams that run <em className="text-brand">themselves</em>
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
-              Every exam gets its own private link and every student gets their
-              own password. Timed, proctored, auto-submitted — no accounts, no
-              setup, no fuss.
+              Every exam gets its own private link and every student gets their own password. Timed,
+              proctored, auto-submitted and auto-graded — no accounts, no setup, no fuss.
             </p>
             <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2" aria-label="Highlights">
               {ASSURANCES.map((a) => (
-                <li key={a} className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                <li
+                  key={a}
+                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground"
+                >
                   <Check className="size-4 text-brand" strokeWidth={3} /> {a}
                 </li>
               ))}
             </ul>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <a href="#join" className="inline-flex h-12 items-center gap-2 rounded-full bg-brand px-7 text-sm font-semibold text-brand-foreground shadow-md shadow-brand/20 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand/25">
+              <a
+                href="#join"
+                className="inline-flex h-12 items-center gap-2 rounded-full bg-brand px-7 text-sm font-semibold text-brand-foreground shadow-md shadow-brand/20 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand/25"
+              >
                 Join Your Exam <ArrowRight className="size-4" />
               </a>
-              <p className="text-sm text-muted-foreground">
-                No account needed — just your exam link.
-              </p>
+              <Link
+                to="/panel-admin-login"
+                className="inline-flex h-12 items-center gap-2 rounded-full border border-border bg-card px-7 text-sm font-semibold transition-all hover:-translate-y-0.5 hover:border-brand/40 hover:shadow"
+              >
+                <Sparkles className="size-4 text-brand" /> Run an exam
+              </Link>
+              <InstallButton />
             </div>
+            <dl className="mt-10 grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-4">
+              {STATS.map((s) => (
+                <div
+                  key={s.label}
+                  className="flex flex-col rounded-2xl border border-border/70 bg-card/60 px-3 py-3"
+                >
+                  <dd className="font-mono text-xl font-semibold text-brand">{s.value}</dd>
+                  <dt className="mt-1 text-[11px] leading-snug text-muted-foreground">{s.label}</dt>
+                </div>
+              ))}
+            </dl>
           </div>
 
           {/* Join card */}
-          <div id="join" className="scroll-mt-24 rounded-[24px] border border-border bg-card p-6 shadow-xl shadow-brand/[0.07] sm:p-8">
+          <div
+            id="join"
+            className="scroll-mt-24 rounded-[24px] border border-border bg-card p-6 shadow-xl shadow-brand/[0.07] sm:p-8"
+          >
             <div className="flex items-center gap-3">
               <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand text-brand-foreground">
                 <ShieldCheck className="size-5" />
@@ -139,7 +218,9 @@ function LandingPage() {
               </div>
             </div>
             <form onSubmit={goToExam} className="mt-6">
-              <label htmlFor="exam-code" className="sr-only">Exam code or link</label>
+              <label htmlFor="exam-code" className="sr-only">
+                Exam code or link
+              </label>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <div className="relative flex-1">
                   <Link2 className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -153,27 +234,94 @@ function LandingPage() {
                     spellCheck={false}
                   />
                 </div>
-                <Button type="submit" className="h-12 shrink-0 rounded-full bg-brand px-7 font-semibold text-brand-foreground shadow-md shadow-brand/20 hover:bg-brand/90">
+                <Button
+                  type="submit"
+                  className="h-12 shrink-0 rounded-full bg-brand px-7 font-semibold text-brand-foreground shadow-md shadow-brand/20 hover:bg-brand/90"
+                >
                   Go <ArrowRight className="size-4" />
                 </Button>
               </div>
-              <p role={codeError ? "alert" : undefined} className={`mt-3 text-sm ${codeError ? "font-medium text-destructive" : "text-muted-foreground"}`}>
-                {codeError ?? "Paste the full link or just the code after /exam/. Press Enter to continue."}
+              <p
+                role={codeError ? "alert" : undefined}
+                className={`mt-3 text-sm ${codeError ? "font-medium text-destructive" : "text-muted-foreground"}`}
+              >
+                {codeError ??
+                  "Paste the full link or just the code after /exam/. Press Enter to continue."}
               </p>
             </form>
+            <div className="mt-6 grid grid-cols-3 gap-2 border-t border-border pt-5 text-center">
+              {[
+                {
+                  icon: <LockKeyhole className="mx-auto size-4 text-brand" />,
+                  text: "Private login",
+                },
+                { icon: <AlarmClock className="mx-auto size-4 text-brand" />, text: "Live timer" },
+                {
+                  icon: <ClipboardCheck className="mx-auto size-4 text-brand" />,
+                  text: "Auto-submit",
+                },
+              ].map((s) => (
+                <div key={s.text} className="rounded-xl bg-muted/40 px-2 py-3">
+                  {s.icon}
+                  <p className="mt-1.5 text-xs font-medium text-muted-foreground">{s.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Audience split */}
+      <section aria-label="Who is it for" className="mx-auto max-w-6xl px-5 pb-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="group relative overflow-hidden rounded-[24px] border border-border bg-card p-7 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+            <span className="grid size-11 place-items-center rounded-2xl bg-brand/10 text-brand transition-colors group-hover:bg-brand group-hover:text-brand-foreground">
+              <Users className="size-5" />
+            </span>
+            <h2 className="mt-4 text-2xl tracking-tight">For students</h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
+              No signup, no app to install. Open your link, log in with the password your organizer
+              gave you, and focus on the questions — we handle the timer, saving and submission.
+            </p>
+            <a
+              href="#join"
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand"
+            >
+              Join your exam <ArrowRight className="size-4" />
+            </a>
+          </div>
+          <div className="group relative overflow-hidden rounded-[24px] border border-border bg-card p-7 transition-all hover:-translate-y-0.5 hover:shadow-lg">
+            <span className="grid size-11 place-items-center rounded-2xl bg-brand/10 text-brand transition-colors group-hover:bg-brand group-hover:text-brand-foreground">
+              <BarChart3 className="size-5" />
+            </span>
+            <h2 className="mt-4 text-2xl tracking-tight">For organizers</h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
+              Create exams, bulk-upload students with auto-generated passwords, add MCQ and
+              True/False questions, and watch live results with ranks, analytics and exports.
+            </p>
+            <Link
+              to="/panel-admin-login"
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand"
+            >
+              Open organizer dashboard <ArrowRight className="size-4" />
+            </Link>
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section id="features" aria-labelledby="features-heading" className="mx-auto max-w-6xl scroll-mt-20 px-5 py-16 sm:py-20">
+      <section
+        id="features"
+        aria-labelledby="features-heading"
+        className="mx-auto max-w-6xl scroll-mt-20 px-5 py-16 sm:py-20"
+      >
         <div className="max-w-2xl">
           <p className="mono-label text-brand">Why {brand.appName}</p>
           <h2 id="features-heading" className="mt-3 text-3xl tracking-tight sm:text-4xl">
             Everything a fair exam needs. Nothing it doesn&apos;t.
           </h2>
         </div>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <FeatureCard
             icon={<LockKeyhole className="size-5" />}
             title="Secure login"
@@ -194,11 +342,25 @@ function LandingPage() {
             title="Fair proctoring"
             text="Full-screen mode with tab-switch detection and warnings keeps every attempt honest."
           />
+          <FeatureCard
+            icon={<FileUp className="size-5" />}
+            title="Easy question setup"
+            text="Add MCQ, multi-correct and True/False questions one by one — or bulk-upload from CSV and Excel."
+          />
+          <FeatureCard
+            icon={<BarChart3 className="size-5" />}
+            title="Instant results"
+            text="Auto-graded scores with ranks, pass/fail, analytics charts and CSV, Excel and PDF exports."
+          />
         </div>
       </section>
 
       {/* How it works */}
-      <section id="how-it-works" aria-labelledby="how-heading" className="border-y border-border bg-muted/30">
+      <section
+        id="how-it-works"
+        aria-labelledby="how-heading"
+        className="border-y border-border bg-muted/30"
+      >
         <div className="mx-auto max-w-6xl scroll-mt-20 px-5 py-16 sm:py-20">
           <div className="max-w-2xl">
             <p className="mono-label text-brand">How it works</p>
@@ -207,7 +369,10 @@ function LandingPage() {
             </h2>
           </div>
           <ol className="relative mt-10 grid gap-4 md:grid-cols-3">
-            <div aria-hidden="true" className="absolute left-0 right-0 top-11 hidden border-t-2 border-dashed border-border md:block" />
+            <div
+              aria-hidden="true"
+              className="absolute left-0 right-0 top-11 hidden border-t-2 border-dashed border-border md:block"
+            />
             <StepCard
               n="1"
               title="Get your link & password"
@@ -227,21 +392,81 @@ function LandingPage() {
         </div>
       </section>
 
+      {/* FAQ */}
+      <section
+        id="faq"
+        aria-labelledby="faq-heading"
+        className="mx-auto max-w-3xl scroll-mt-20 px-5 py-16 sm:py-20"
+      >
+        <div className="text-center">
+          <p className="mono-label text-brand">FAQ</p>
+          <h2 id="faq-heading" className="mt-3 text-3xl tracking-tight sm:text-4xl">
+            Questions, answered
+          </h2>
+        </div>
+        <div className="mt-8 space-y-3">
+          {FAQS.map((f, i) => {
+            const open = openFaq === i;
+            return (
+              <div
+                key={f.q}
+                className={`overflow-hidden rounded-[20px] border transition-colors ${open ? "border-brand/40 bg-card shadow-sm" : "border-border bg-card"}`}
+              >
+                <button
+                  onClick={() => setOpenFaq(open ? null : i)}
+                  aria-expanded={open}
+                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+                >
+                  <span className="font-medium">{f.q}</span>
+                  <ChevronDown
+                    className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {open ? (
+                  <p className="px-5 pb-5 text-[15px] leading-relaxed text-muted-foreground">
+                    {f.a}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {/* Organizer CTA */}
-      <section aria-labelledby="cta-heading" className="mx-auto max-w-6xl px-5 py-16 sm:py-20">
+      <section aria-labelledby="cta-heading" className="mx-auto max-w-6xl px-5 pb-16 sm:pb-20">
         <div className="relative overflow-hidden rounded-[28px] bg-brand px-6 py-12 text-center text-brand-foreground shadow-xl shadow-brand/20 sm:px-12 sm:py-16">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.16),transparent_60%)]" />
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-20 bg-[linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_60%_80%_at_50%_50%,black,transparent)]" />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.16),transparent_60%)]"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 opacity-20 bg-[linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:radial-gradient(ellipse_60%_80%_at_50%_50%,black,transparent)]"
+          />
           <div className="relative">
             <p className="mono-label opacity-80">For organizers</p>
-            <h2 id="cta-heading" className="mx-auto mt-3 max-w-xl text-3xl tracking-tight sm:text-5xl">
+            <h2
+              id="cta-heading"
+              className="mx-auto mt-3 max-w-xl text-3xl tracking-tight sm:text-5xl"
+            >
               Run your next exam in minutes
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-[16px] leading-relaxed opacity-90">
-              Create the exam, share one link, auto-generate every password,
-              upload questions, and watch results roll in.
+              Create the exam, share one link, auto-generate every password, upload questions, and
+              watch results roll in.
             </p>
-            <Link to="/panel-admin-login" className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-brand-foreground px-8 text-sm font-semibold text-brand shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl">
+            <ul className="mx-auto mt-6 flex max-w-xl flex-wrap justify-center gap-x-5 gap-y-2 text-sm opacity-90">
+              {["Bulk student upload", "Question bank", "Live results & ranks"].map((t) => (
+                <li key={t} className="flex items-center gap-1.5">
+                  <Check className="size-4" strokeWidth={3} /> {t}
+                </li>
+              ))}
+            </ul>
+            <Link
+              to="/panel-admin-login"
+              className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-brand-foreground px-8 text-sm font-semibold text-brand shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl"
+            >
               Open organizer dashboard <ArrowRight className="size-4" />
             </Link>
           </div>
@@ -257,9 +482,18 @@ function LandingPage() {
             {footerCopyright()}
           </p>
           <nav className="flex items-center gap-5" aria-label="Footer">
-            <a href="#join" className="transition-colors hover:text-foreground">Join exam</a>
-            <Link to="/panel-admin-login" className="transition-colors hover:text-foreground">Organizer login</Link>
-            <a className="transition-colors hover:text-foreground" href={`mailto:${brand.supportEmail}`}>Support</a>
+            <a href="#join" className="transition-colors hover:text-foreground">
+              Join exam
+            </a>
+            <Link to="/panel-admin-login" className="transition-colors hover:text-foreground">
+              Organizer login
+            </Link>
+            <a
+              className="transition-colors hover:text-foreground"
+              href={`mailto:${brand.supportEmail}`}
+            >
+              Support
+            </a>
           </nav>
         </div>
       </footer>
@@ -267,7 +501,34 @@ function LandingPage() {
   );
 }
 
-function FeatureCard({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+/** Appears only when the browser offers PWA installation. */
+function InstallButton() {
+  const canInstall = useInstallPrompt();
+  const [busy, setBusy] = useState(false);
+  if (!canInstall) return null;
+  return (
+    <button
+      onClick={() => {
+        setBusy(true);
+        void promptInstall().finally(() => setBusy(false));
+      }}
+      disabled={busy}
+      className="inline-flex h-12 items-center gap-2 rounded-full border border-border bg-card px-7 text-sm font-semibold transition-all hover:-translate-y-0.5 hover:border-brand/40 hover:shadow"
+    >
+      <Download className="size-4 text-brand" /> {busy ? "Installing…" : "Install app"}
+    </button>
+  );
+}
+
+function FeatureCard({
+  icon,
+  title,
+  text,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  text: string;
+}) {
   return (
     <div className="group relative overflow-hidden rounded-[22px] border border-border bg-card p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/[0.08]">
       <span className="grid size-11 place-items-center rounded-2xl bg-brand/10 text-brand transition-colors duration-300 group-hover:bg-brand group-hover:text-brand-foreground">

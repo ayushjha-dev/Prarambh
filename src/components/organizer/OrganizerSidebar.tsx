@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { BarChart3, ClipboardList, LayoutDashboard, LogOut, Menu, Users, X } from "lucide-react";
+import { BarChart3, ClipboardList, LayoutDashboard, LogOut, Users } from "lucide-react";
 
 import { brand } from "@/config/brand";
 
@@ -23,11 +22,8 @@ export function OrganizerSidebar(props: {
   onNavigate: (view: OrganizerView) => void;
   onLogout: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   function go(view: OrganizerView) {
     props.onNavigate(view);
-    setOpen(false);
   }
 
   const nav = (
@@ -100,48 +96,15 @@ export function OrganizerSidebar(props: {
 
   return (
     <>
-      {/* Mobile top bar */}
-      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur-md md:hidden">
-        <button
-          onClick={() => setOpen(true)}
-          className="min-h-11 min-w-11 rounded-lg p-2 hover:bg-secondary"
-          aria-label="Open menu"
-        >
-          <Menu className="size-5" />
-        </button>
+      {/* Mobile top bar (navigation lives in the bottom tabs) */}
+      <div className="sticky top-0 z-40 flex items-center justify-center border-b border-border bg-background/90 px-4 py-3 backdrop-blur-md md:hidden">
         <p className="flex items-center gap-2 text-sm font-semibold">
           <span className="grid size-7 place-items-center rounded-lg bg-brand font-mono text-[11px] font-semibold text-brand-foreground">
             {brand.logoMark}
           </span>
           {brand.appName} · Organizer
         </p>
-        <span className="w-11" />
       </div>
-
-      {/* Mobile drawer */}
-      {open ? (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <div className="absolute inset-y-0 left-0 w-72 max-w-[85vw] overflow-y-auto bg-card shadow-xl">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <p className="flex items-center gap-2 text-sm font-semibold">
-                <span className="grid size-7 place-items-center rounded-lg bg-brand font-mono text-[11px] font-semibold text-brand-foreground">
-                  {brand.logoMark}
-                </span>
-                Organizer
-              </p>
-              <button
-                onClick={() => setOpen(false)}
-                className="min-h-11 min-w-11 rounded-lg p-2 hover:bg-secondary"
-                aria-label="Close menu"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-            {nav}
-          </div>
-        </div>
-      ) : null}
 
       {/* Mobile thumb-reach bottom tabs */}
       {bottomNav}

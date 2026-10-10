@@ -1,6 +1,7 @@
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useBlocker, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { brand } from "@/config/brand";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,8 +23,14 @@ export const Route = createFileRoute("/panel-admin")({
       : undefined,
   }),
   beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/panel-admin-login" });
+    // Local session read (no network): the JWT itself is still verified
+    // server-side on every server-function call. Using getUser() here would
+    // hit the network and log the organizer out on any hiccup (notably the
+    // Android-back navigation in the installed PWA).
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw redirect({ to: "/panel-admin-login" });
   },
   head: () => ({
     meta: [
@@ -57,7 +64,41 @@ function AdminPanel() {
     void navigate({ to: "/panel-admin", search: { view: next }, replace: true });
   }
 
+  // Back-button trap: leaving the organizer area (Android back / browser
+  // back) never logs out and never lands on the login page while the session
+  // is valid. Instead it resolves to the dashboard; on the dashboard the
+  // first back press arms "press back again to exit", the second one exits.
+  // Logout is the only path that sets allowLeave.
+  const allowLeave = useRef(false);
+  const exitArmedAt = useRef(0);
+  const blocker = useBlocker({
+    shouldBlockFn: ({ next }) => {
+      if (allowLeave.current) return false;
+      const p = next.pathname;
+      return !p.startsWith("/panel-admin") && !p.startsWith("/organizer");
+    },
+    withResolver: true,
+  });
+
+  useEffect(() => {
+    if (blocker.status !== "blocked") return;
+    if (view === "dashboard" && !questionsExam) {
+      if (Date.now() - exitArmedAt.current < 2500) {
+        blocker.proceed();
+        return;
+      }
+      exitArmedAt.current = Date.now();
+      toast.message("Press back again to exit.");
+      blocker.reset();
+    } else {
+      go("dashboard");
+      blocker.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocker.status]);
+
   async function signOut() {
+    allowLeave.current = true;
     await queryClient.cancelQueries();
     queryClient.clear();
     await supabase.auth.signOut();

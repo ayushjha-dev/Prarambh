@@ -756,6 +756,203 @@ export const adminRegenerateStudentPassword = createServerFn({ method: "POST" })
     return { password };
   });
 
+// ------------------------------------------- bulk send credentials by email
+const MAX_BULK_SEND_ROWS = 1000;
+const RESEND_BATCH_SIZE = 5;
+const RESEND_BATCH_DELAY_MS = 400;
+
+// Unambiguous alphabet: no 0/O, no l/1.
+const SECURE_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+const SECURE_LOWER = "abcdefghijkmnopqrstuvwxyz";
+const SECURE_DIGITS = "23456789";
+const SECURE_SYMBOLS = "!@#$%^&*-_+=?";
+
+/**
+ * Random secure password (NOT derived from name/email): at least one upper,
+ * lower, digit and symbol, shuffled. Only the hash is ever stored or sent
+ * to the DB — the plaintext lives only in this response + the email.
+ */
+async function generateSecurePassword(length = 12): Promise<string> {
+  const { default: crypto } = await import("node:crypto");
+  const pick = (alphabet: string): string => alphabet[crypto.randomInt(alphabet.length)] as string;
+  const chars = [pick(SECURE_UPPER), pick(SECURE_LOWER), pick(SECURE_DIGITS), pick(SECURE_SYMBOLS)];
+  const all = SECURE_UPPER + SECURE_LOWER + SECURE_DIGITS + SECURE_SYMBOLS;
+  while (chars.length < length) chars.push(pick(all));
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    const tmp = chars[i] as string;
+    chars[i] = chars[j] as string;
+    chars[j] = tmp;
+  }
+  return chars.join("");
+}
+
+const bulkSendRowSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().email().max(200),
+  roll_no: z.string().trim().min(1).max(60),
+});
+
+/**
+ * POST /api/organizer/bulk-send-credentials equivalent: create-or-update one
+ * credential per row, then email name + roll + login + fresh password +
+ * exam name + exam link through Resend. Batched to respect rate limits; one
+ * email failing never stops the rest. Summary returned at the end.
+ */
+export const adminBulkSendCredentials = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        examId: z.string().uuid(),
+        students: z.array(bulkSendRowSchema).min(1).max(MAX_BULK_SEND_ROWS),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const RESEND_API_KEY = process.env["RESEND_API_KEY"];
+    const RESEND_FROM = process.env["RESEND_FROM"];
+    const APP_URL = process.env["APP_URL"];
+    if (!RESEND_API_KEY || !RESEND_FROM || !APP_URL) {
+      throw new Error(
+        "Email sending is not configured. Set RESEND_API_KEY, RESEND_FROM and APP_URL on the server.",
+      );
+    }
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: exam } = await supabaseAdmin
+      .from("exams")
+      .select("id, title, slug, created_by")
+      .eq("id", data.examId)
+      .maybeSingle();
+    if (!exam) throw new Error("Exam not found.");
+    if (exam.created_by && exam.created_by !== context.userId) {
+      throw new Error("Forbidden: this exam belongs to another organizer.");
+    }
+    const examLink = `${APP_URL.replace(/\/$/, "")}/exam/${exam.slug}`;
+
+    const { data: existing } = await supabaseAdmin
+      .from("participants")
+      .select("id, email, roll_no")
+      .eq("exam_id", data.examId);
+    type ExistingRow = { id: string; email: string; roll_no: string | null };
+    const existingRows = (existing ?? []) as ExistingRow[];
+    const byEmail = new Map(existingRows.map((p) => [String(p.email).toLowerCase(), p]));
+    const usedRolls = new Set(
+      existingRows.map((p) => String(p.roll_no ?? "").trim()).filter(Boolean),
+    );
+
+    const { Resend } = await import("resend");
+    const resend = new Resend(RESEND_API_KEY);
+
+    const sent: { email: string }[] = [];
+    const failed: { email: string; reason: string }[] = [];
+    const seenEmails = new Set<string>();
+    const toSend: { name: string; email: string; roll_no: string; password: string }[] = [];
+
+    // Phase 1 — validate + upsert every row (server never trusts the client).
+    for (const s of data.students) {
+      const email = s.email.toLowerCase();
+      const roll = s.roll_no.trim();
+      if (seenEmails.has(email)) {
+        failed.push({ email, reason: "Duplicate email in upload" });
+        continue;
+      }
+      seenEmails.add(email);
+      try {
+        const match =
+          byEmail.get(email) ??
+          existingRows.find((p) => String(p.roll_no ?? "").trim() === roll && roll !== "");
+        const password = await generateSecurePassword(12);
+        const { salt, hash } = await hashPassword(password);
+        if (match) {
+          const { error } = await supabaseAdmin
+            .from("participants")
+            .update({
+              name: s.name.trim(),
+              roll_no: roll,
+              password_salt: salt,
+              password_hash: hash,
+              failed_attempts: 0,
+              locked_until: null,
+            })
+            .eq("id", match.id);
+          if (error) throw new Error(error.message);
+        } else {
+          if (usedRolls.has(roll))
+            throw new Error(`Roll no ${roll} is already registered for this exam.`);
+          const { data: created, error } = await supabaseAdmin
+            .from("participants")
+            .insert({
+              exam_id: data.examId,
+              name: s.name.trim(),
+              email,
+              roll_no: roll,
+              is_active: true,
+              password_salt: salt,
+              password_hash: hash,
+              status: "not_started",
+            })
+            .select("id")
+            .single();
+          if (error) {
+            if (error.code === "23505") throw new Error(`Duplicate email: ${email}`);
+            throw new Error(error.message);
+          }
+          if (!created) throw new Error("Insert failed.");
+          byEmail.set(email, { id: created.id as string, email, roll_no: roll });
+          usedRolls.add(roll);
+        }
+        toSend.push({ name: s.name.trim(), email, roll_no: roll, password });
+      } catch (err) {
+        failed.push({ email, reason: err instanceof Error ? err.message : "Save failed" });
+      }
+    }
+
+    // Phase 2 — email in small batches; one failure never stops the rest.
+    for (let i = 0; i < toSend.length; i += RESEND_BATCH_SIZE) {
+      const batch = toSend.slice(i, i + RESEND_BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (row) => {
+          try {
+            const { error } = await resend.emails.send({
+              from: RESEND_FROM,
+              to: row.email,
+              subject: `Your exam login: ${exam.title}`,
+              text: [
+                `Hi ${row.name},`,
+                ``,
+                `You are registered for "${exam.title}".`,
+                ``,
+                `Name: ${row.name}`,
+                `Roll No: ${row.roll_no}`,
+                `Login email: ${row.email}`,
+                `Password: ${row.password}`,
+                ``,
+                `Exam link: ${examLink}`,
+                ``,
+                `Open the link and log in with your email and password. Good luck!`,
+              ].join("\n"),
+            });
+            if (error) throw new Error(error.message);
+            sent.push({ email: row.email });
+          } catch (err) {
+            failed.push({
+              email: row.email,
+              reason: err instanceof Error ? err.message : "Email failed",
+            });
+          }
+        }),
+      );
+      if (i + RESEND_BATCH_SIZE < toSend.length) {
+        await new Promise((r) => setTimeout(r, RESEND_BATCH_DELAY_MS));
+      }
+    }
+
+    return { total: data.students.length, sent, failed };
+  });
+
 /** Edit a participant's directory fields. PUT /api/organizer/participants/:id */
 export const adminUpdateParticipant = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

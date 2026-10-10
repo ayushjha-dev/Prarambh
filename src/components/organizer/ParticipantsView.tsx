@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BulkSendView } from "./BulkSendView";
 import { ConfirmModal } from "./ConfirmModal";
 import {
   adminAddStudent,
@@ -102,6 +103,7 @@ export function ParticipantsView() {
   const [assignId, setAssignId] = useState<string | null>(null);
   const [assignExam, setAssignExam] = useState("");
   const [assigning, setAssigning] = useState(false);
+  const [section, setSection] = useState<"directory" | "bulk-send">("directory");
 
   const groups = useMemo(
     () => ["All", ...new Set(directory.map((d) => d.group_name).filter(Boolean))],
@@ -377,466 +379,507 @@ export function ParticipantsView() {
     <div className="mx-auto max-w-6xl px-5 py-6">
       <h1 className="text-2xl">Participants</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Upload, manage credentials, and maintain the directory.
+        Upload, manage credentials, email exam links, and maintain the directory.
       </p>
 
-      {/* Exam picker */}
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Label className="mono-label text-muted-foreground">Exam for uploads</Label>
-        {exams.length ? (
-          <select
-            value={effectiveExamId}
-            onChange={(e) => setExamId(e.target.value)}
-            className="h-10 min-w-52 rounded-xl border border-input bg-background px-3 text-sm"
+      <div className="mt-4 flex gap-2" role="tablist" aria-label="Participants sections">
+        {(
+          [
+            ["directory", "Directory & Upload"],
+            ["bulk-send", "Bulk Send Credentials"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={section === key}
+            onClick={() => setSection(key)}
+            className={`min-h-11 rounded-full px-5 text-sm font-medium transition-colors ${
+              section === key
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "border border-border text-muted-foreground hover:text-foreground"
+            }`}
           >
-            {exams.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.title}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span className="text-sm text-muted-foreground">No exams yet — create one first.</span>
-        )}
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Upload */}
-      <section className="mt-4 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-[22px] border border-border p-5">
-          <p className="mono-label text-muted-foreground">Add participant</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Input
-              placeholder="Full name *"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="rounded-xl"
-            />
-            <Input
-              placeholder="Email address *"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="rounded-xl"
-            />
-            <Input
-              placeholder="Phone (optional)"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="rounded-xl"
-            />
-            <Input
-              placeholder="Roll No / ID (optional)"
-              value={roll}
-              onChange={(e) => setRoll(e.target.value)}
-              className="rounded-xl"
-            />
-            <Input
-              placeholder="Class / Group (optional)"
-              value={group}
-              onChange={(e) => setGroup(e.target.value)}
-              className="rounded-xl sm:col-span-2"
-            />
-          </div>
-          <Button disabled={adding} onClick={handleAddSingle} className="mt-3 rounded-[32px]">
-            <Plus className="size-4" /> {adding ? "Adding…" : "Add & generate password"}
-          </Button>
+      {section === "bulk-send" ? (
+        <div className="mt-4">
+          <BulkSendView exams={exams} examId={examId} onExamChange={setExamId} />
         </div>
-
-        <div className="rounded-[22px] border border-border p-5">
-          <p className="mono-label text-muted-foreground">
-            Bulk upload (.csv, .xlsx, .xls — max 5 MB)
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-[32px] border border-input bg-background px-4 text-sm font-medium hover:bg-accent">
-              <Upload className="size-4" /> Choose file
-              <input
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) await handleFile(file);
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            {fileName ? <span className="text-xs text-muted-foreground">{fileName}</span> : null}
-            <Button
-              size="sm"
-              variant="secondary"
-              className="rounded-full"
-              onClick={() => downloadFile("participants-template.csv", participantTemplateCsv())}
-            >
-              <Download className="size-3.5" /> Sample template
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Columns: Name, Email, Phone, Roll No, Group. Preview validates before import.
-          </p>
-        </div>
-      </section>
-
-      {/* Preview */}
-      {drafts.length ? (
-        <section className="mt-4 rounded-[22px] border border-border p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-xl">
-              Preview ({drafts.length} rows · {validDrafts.length} valid)
-            </h2>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={skipInvalid}
-                onChange={(e) => setSkipInvalid(e.target.checked)}
-              />
-              Skip invalid rows
-            </label>
-          </div>
-          <div className="mt-3 max-h-72 overflow-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead>
-                <tr className="mono-label border-b border-border text-muted-foreground">
-                  <th className="py-2 pr-3 font-normal">Name</th>
-                  <th className="py-2 pr-3 font-normal">Email</th>
-                  <th className="py-2 pr-3 font-normal">Phone</th>
-                  <th className="py-2 pr-3 font-normal">Roll No</th>
-                  <th className="py-2 pr-3 font-normal">Group</th>
-                  <th className="py-2 font-normal">Issues</th>
-                </tr>
-              </thead>
-              <tbody>
-                {drafts.map((d, i) => (
-                  <tr
-                    key={i}
-                    className={`border-b border-border ${d.issues.length ? "bg-destructive/5" : ""}`}
-                  >
-                    <td className="py-2 pr-3">{d.name || "—"}</td>
-                    <td className="py-2 pr-3 text-muted-foreground">{d.email || "—"}</td>
-                    <td className="py-2 pr-3">{d.phone || "—"}</td>
-                    <td className="py-2 pr-3">{d.roll_no || "—"}</td>
-                    <td className="py-2 pr-3">{d.group_name || "—"}</td>
-                    <td className="py-2 text-xs text-destructive">{d.issues.join("; ") || "OK"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button
-              disabled={importing || !validDrafts.length}
-              onClick={handleImport}
-              className="rounded-[32px]"
-            >
-              {importing
-                ? "Importing…"
-                : `Import ${skipInvalid ? validDrafts.length : drafts.length} participant(s)`}
-            </Button>
-            <Button
-              variant="ghost"
-              className="rounded-[32px]"
-              onClick={() => {
-                setDrafts([]);
-                setFileName(null);
-              }}
-            >
-              Discard
-            </Button>
-          </div>
-        </section>
       ) : null}
 
-      {/* One-time credentials */}
-      {fresh.length ? (
-        <section className="mt-4 rounded-[22px] border border-brand/40 bg-brand/[0.04] p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="mono-label text-muted-foreground">
-              Credentials — shown once, download now
-            </p>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="rounded-full"
-                onClick={() =>
-                  downloadFile(
-                    `${targetExam?.slug ?? "participants"}-credentials.csv`,
-                    toCsv(
-                      ["Name", "Email", "Password", "Exam Link"],
-                      fresh.map((f) => [
-                        f.name ?? "",
-                        f.email,
-                        f.password,
-                        targetExam ? `${window.location.origin}/exam/${targetExam.slug}` : "",
-                      ]),
-                    ),
-                  )
-                }
+      {section === "directory" ? (
+        <>
+          {/* Exam picker */}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Label className="mono-label text-muted-foreground">Exam for uploads</Label>
+            {exams.length ? (
+              <select
+                value={effectiveExamId}
+                onChange={(e) => setExamId(e.target.value)}
+                className="h-10 min-w-52 rounded-xl border border-input bg-background px-3 text-sm"
               >
-                Download CSV
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="rounded-full"
-                onClick={() =>
-                  void exportRowsXlsx(
-                    `${targetExam?.slug ?? "participants"}-credentials.xlsx`,
-                    ["Name", "Email", "Password"],
-                    fresh.map((f) => [f.name ?? "", f.email, f.password]),
-                  )
-                }
-              >
-                Download Excel
+                {exams.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.title}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                No exams yet — create one first.
+              </span>
+            )}
+          </div>
+
+          {/* Upload */}
+          <section className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[22px] border border-border p-5">
+              <p className="mono-label text-muted-foreground">Add participant</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Input
+                  placeholder="Full name *"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="rounded-xl"
+                />
+                <Input
+                  placeholder="Email address *"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="rounded-xl"
+                />
+                <Input
+                  placeholder="Phone (optional)"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="rounded-xl"
+                />
+                <Input
+                  placeholder="Roll No / ID (optional)"
+                  value={roll}
+                  onChange={(e) => setRoll(e.target.value)}
+                  className="rounded-xl"
+                />
+                <Input
+                  placeholder="Class / Group (optional)"
+                  value={group}
+                  onChange={(e) => setGroup(e.target.value)}
+                  className="rounded-xl sm:col-span-2"
+                />
+              </div>
+              <Button disabled={adding} onClick={handleAddSingle} className="mt-3 rounded-[32px]">
+                <Plus className="size-4" /> {adding ? "Adding…" : "Add & generate password"}
               </Button>
             </div>
-          </div>
-          <div className="mt-3 space-y-2">
-            {fresh.map((f) => (
-              <div
-                key={f.email}
-                className="flex flex-wrap items-center gap-2 rounded-xl bg-card p-3 text-sm"
-              >
-                <span className="font-medium">{f.email}</span>
-                <code className="rounded bg-muted/60 px-2 py-0.5 font-mono">{f.password}</code>
-                <span className="ml-auto flex gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="rounded-full"
-                    onClick={() => void copyText(f.password, `pw-${f.email}`)}
-                  >
-                    {copied === `pw-${f.email}` ? (
-                      <Check className="size-4" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                  </Button>
-                  <a
-                    href={`mailto:${encodeURIComponent(f.email)}?subject=${encodeURIComponent(`Your exam login: ${targetExam?.title ?? ""}`)}&body=${encodeURIComponent(`Exam link: ${targetExam ? `${window.location.origin}/exam/${targetExam.slug}` : ""}\nEmail: ${f.email}\nPassword: ${f.password}`)}`}
-                    className="inline-flex h-8 items-center rounded-full border border-input px-3 text-xs font-medium hover:bg-accent"
-                  >
-                    Email
-                  </a>
-                </span>
+
+            <div className="rounded-[22px] border border-border p-5">
+              <p className="mono-label text-muted-foreground">
+                Bulk upload (.csv, .xlsx, .xls — max 5 MB)
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-[32px] border border-input bg-background px-4 text-sm font-medium hover:bg-accent">
+                  <Upload className="size-4" /> Choose file
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) await handleFile(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {fileName ? (
+                  <span className="text-xs text-muted-foreground">{fileName}</span>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="rounded-full"
+                  onClick={() =>
+                    downloadFile("participants-template.csv", participantTemplateCsv())
+                  }
+                >
+                  <Download className="size-3.5" /> Sample template
+                </Button>
               </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+              <p className="mt-2 text-xs text-muted-foreground">
+                Columns: Name, Email, Phone, Roll No, Group. Preview validates before import.
+              </p>
+            </div>
+          </section>
 
-      {/* Directory */}
-      <section className="mt-4 rounded-[22px] border border-border p-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-xl">All participants ({filtered.length})</h2>
-          {selected.size ? (
-            <Button
-              size="sm"
-              variant="destructive"
-              className="rounded-full"
-              disabled={bulkDeleting}
-              onClick={handleBulkDelete}
-            >
-              <Trash2 className="size-3.5" />{" "}
-              {bulkDeleting ? "Deleting…" : `Delete ${selected.size} selected`}
-            </Button>
-          ) : null}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-3">
-          <Input
-            placeholder="Search name or email"
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(0);
-            }}
-            className="h-10 max-w-xs rounded-xl"
-          />
-          <select
-            value={groupFilter}
-            onChange={(e) => {
-              setGroupFilter(e.target.value);
-              setPage(0);
-            }}
-            className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
-            aria-label="Filter by group"
-          >
-            {groups.map((g) => (
-              <option key={g} value={g}>
-                {g === "All" ? "All groups" : g}
-              </option>
-            ))}
-          </select>
-          <select
-            value={activeFilter}
-            onChange={(e) => {
-              setActiveFilter(e.target.value);
-              setPage(0);
-            }}
-            className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
-            aria-label="Filter by status"
-          >
-            {["All", "Active", "Inactive"].map((s) => (
-              <option key={s} value={s}>
-                {s === "All" ? "All statuses" : s}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead>
-              <tr className="mono-label border-b border-border text-muted-foreground">
-                <th className="py-2 pr-3">
+          {/* Preview */}
+          {drafts.length ? (
+            <section className="mt-4 rounded-[22px] border border-border p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-xl">
+                  Preview ({drafts.length} rows · {validDrafts.length} valid)
+                </h2>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
                   <input
                     type="checkbox"
-                    checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))}
-                    onChange={(e) => {
-                      setSelected((s) => {
-                        const next = new Set(s);
-                        if (e.target.checked) pageRows.forEach((r) => next.add(r.id));
-                        else pageRows.forEach((r) => next.delete(r.id));
-                        return next;
-                      });
-                    }}
-                    aria-label="Select page"
+                    checked={skipInvalid}
+                    onChange={(e) => setSkipInvalid(e.target.checked)}
                   />
-                </th>
-                {(
-                  [
-                    ["name", "Name"],
-                    ["email", "Email"],
-                  ] as const
-                ).map(([key, label]) => (
-                  <th
-                    key={key}
-                    className="cursor-pointer py-2 pr-3 font-normal"
-                    onClick={() => toggleSort(key)}
+                  Skip invalid rows
+                </label>
+              </div>
+              <div className="mt-3 max-h-72 overflow-auto">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead>
+                    <tr className="mono-label border-b border-border text-muted-foreground">
+                      <th className="py-2 pr-3 font-normal">Name</th>
+                      <th className="py-2 pr-3 font-normal">Email</th>
+                      <th className="py-2 pr-3 font-normal">Phone</th>
+                      <th className="py-2 pr-3 font-normal">Roll No</th>
+                      <th className="py-2 pr-3 font-normal">Group</th>
+                      <th className="py-2 font-normal">Issues</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drafts.map((d, i) => (
+                      <tr
+                        key={i}
+                        className={`border-b border-border ${d.issues.length ? "bg-destructive/5" : ""}`}
+                      >
+                        <td className="py-2 pr-3">{d.name || "—"}</td>
+                        <td className="py-2 pr-3 text-muted-foreground">{d.email || "—"}</td>
+                        <td className="py-2 pr-3">{d.phone || "—"}</td>
+                        <td className="py-2 pr-3">{d.roll_no || "—"}</td>
+                        <td className="py-2 pr-3">{d.group_name || "—"}</td>
+                        <td className="py-2 text-xs text-destructive">
+                          {d.issues.join("; ") || "OK"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  disabled={importing || !validDrafts.length}
+                  onClick={handleImport}
+                  className="rounded-[32px]"
+                >
+                  {importing
+                    ? "Importing…"
+                    : `Import ${skipInvalid ? validDrafts.length : drafts.length} participant(s)`}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="rounded-[32px]"
+                  onClick={() => {
+                    setDrafts([]);
+                    setFileName(null);
+                  }}
+                >
+                  Discard
+                </Button>
+              </div>
+            </section>
+          ) : null}
+
+          {/* One-time credentials */}
+          {fresh.length ? (
+            <section className="mt-4 rounded-[22px] border border-brand/40 bg-brand/[0.04] p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="mono-label text-muted-foreground">
+                  Credentials — shown once, download now
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-full"
+                    onClick={() =>
+                      downloadFile(
+                        `${targetExam?.slug ?? "participants"}-credentials.csv`,
+                        toCsv(
+                          ["Name", "Email", "Password", "Exam Link"],
+                          fresh.map((f) => [
+                            f.name ?? "",
+                            f.email,
+                            f.password,
+                            targetExam ? `${window.location.origin}/exam/${targetExam.slug}` : "",
+                          ]),
+                        ),
+                      )
+                    }
                   >
-                    {label}
-                    {sortKey === key ? (asc ? " ↑" : " ↓") : ""}
-                  </th>
+                    Download CSV
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-full"
+                    onClick={() =>
+                      void exportRowsXlsx(
+                        `${targetExam?.slug ?? "participants"}-credentials.xlsx`,
+                        ["Name", "Email", "Password"],
+                        fresh.map((f) => [f.name ?? "", f.email, f.password]),
+                      )
+                    }
+                  >
+                    Download Excel
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                {fresh.map((f) => (
+                  <div
+                    key={f.email}
+                    className="flex flex-wrap items-center gap-2 rounded-xl bg-card p-3 text-sm"
+                  >
+                    <span className="font-medium">{f.email}</span>
+                    <code className="rounded bg-muted/60 px-2 py-0.5 font-mono">{f.password}</code>
+                    <span className="ml-auto flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-full"
+                        onClick={() => void copyText(f.password, `pw-${f.email}`)}
+                      >
+                        {copied === `pw-${f.email}` ? (
+                          <Check className="size-4" />
+                        ) : (
+                          <Copy className="size-4" />
+                        )}
+                      </Button>
+                      <a
+                        href={`mailto:${encodeURIComponent(f.email)}?subject=${encodeURIComponent(`Your exam login: ${targetExam?.title ?? ""}`)}&body=${encodeURIComponent(`Exam link: ${targetExam ? `${window.location.origin}/exam/${targetExam.slug}` : ""}\nEmail: ${f.email}\nPassword: ${f.password}`)}`}
+                        className="inline-flex h-8 items-center rounded-full border border-input px-3 text-xs font-medium hover:bg-accent"
+                      >
+                        Email
+                      </a>
+                    </span>
+                  </div>
                 ))}
-                <th className="py-2 pr-3 font-normal">Phone</th>
-                <th className="py-2 pr-3 font-normal">Roll No</th>
-                <th className="py-2 pr-3 font-normal">Group</th>
-                <th className="py-2 pr-3 font-normal">Exam</th>
-                <th className="py-2 pr-3 font-normal">Status</th>
-                <th className="py-2 pr-3 font-normal">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dirLoading ? (
-                <tr>
-                  <td colSpan={9} className="py-6 text-muted-foreground">
-                    Loading…
-                  </td>
-                </tr>
-              ) : !pageRows.length ? (
-                <tr>
-                  <td colSpan={9} className="py-6 text-muted-foreground">
-                    No participants yet. Add one above or bulk-upload a file.
-                  </td>
-                </tr>
-              ) : (
-                pageRows.map((d) => (
-                  <tr key={d.id} className="border-b border-border">
-                    <td className="py-2.5 pr-3">
+              </div>
+            </section>
+          ) : null}
+
+          {/* Directory */}
+          <section className="mt-4 rounded-[22px] border border-border p-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl">All participants ({filtered.length})</h2>
+              {selected.size ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="rounded-full"
+                  disabled={bulkDeleting}
+                  onClick={handleBulkDelete}
+                >
+                  <Trash2 className="size-3.5" />{" "}
+                  {bulkDeleting ? "Deleting…" : `Delete ${selected.size} selected`}
+                </Button>
+              ) : null}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <Input
+                placeholder="Search name or email"
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(0);
+                }}
+                className="h-10 max-w-xs rounded-xl"
+              />
+              <select
+                value={groupFilter}
+                onChange={(e) => {
+                  setGroupFilter(e.target.value);
+                  setPage(0);
+                }}
+                className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
+                aria-label="Filter by group"
+              >
+                {groups.map((g) => (
+                  <option key={g} value={g}>
+                    {g === "All" ? "All groups" : g}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={activeFilter}
+                onChange={(e) => {
+                  setActiveFilter(e.target.value);
+                  setPage(0);
+                }}
+                className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
+                aria-label="Filter by status"
+              >
+                {["All", "Active", "Inactive"].map((s) => (
+                  <option key={s} value={s}>
+                    {s === "All" ? "All statuses" : s}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[900px] text-left text-sm">
+                <thead>
+                  <tr className="mono-label border-b border-border text-muted-foreground">
+                    <th className="py-2 pr-3">
                       <input
                         type="checkbox"
-                        checked={selected.has(d.id)}
+                        checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))}
                         onChange={(e) => {
                           setSelected((s) => {
                             const next = new Set(s);
-                            if (e.target.checked) next.add(d.id);
-                            else next.delete(d.id);
+                            if (e.target.checked) pageRows.forEach((r) => next.add(r.id));
+                            else pageRows.forEach((r) => next.delete(r.id));
                             return next;
                           });
                         }}
-                        aria-label={`Select ${d.email}`}
+                        aria-label="Select page"
                       />
-                    </td>
-                    <td className="py-2.5 pr-3 font-medium">{d.name}</td>
-                    <td className="py-2.5 pr-3 text-muted-foreground">{d.email}</td>
-                    <td className="py-2.5 pr-3">{d.phone || "—"}</td>
-                    <td className="py-2.5 pr-3">{d.roll_no || "—"}</td>
-                    <td className="py-2.5 pr-3">{d.group_name || "—"}</td>
-                    <td className="py-2.5 pr-3 text-muted-foreground">{d.exam_title ?? "—"}</td>
-                    <td className="py-2.5 pr-3">{d.is_active ? "Active" : "Inactive"}</td>
-                    <td className="py-2.5 pr-3">
-                      <span className="flex flex-wrap gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="rounded-full"
-                          title="Edit"
-                          onClick={() => openEdit(d)}
-                        >
-                          <Pencil className="size-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="rounded-full"
-                          title="Reset password"
-                          onClick={() => void handleRegen(d.id, d.email)}
-                        >
-                          <RefreshCw className="size-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="rounded-full"
-                          title="Assign to exam"
-                          onClick={() => {
-                            setAssignId(d.id);
-                            setAssignExam(d.exam_id ?? "");
-                          }}
-                        >
-                          <Plus className="size-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="rounded-full text-destructive"
-                          title="Delete"
-                          onClick={() => setDeleteId(d.id)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </span>
-                    </td>
+                    </th>
+                    {(
+                      [
+                        ["name", "Name"],
+                        ["email", "Email"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <th
+                        key={key}
+                        className="cursor-pointer py-2 pr-3 font-normal"
+                        onClick={() => toggleSort(key)}
+                      >
+                        {label}
+                        {sortKey === key ? (asc ? " ↑" : " ↓") : ""}
+                      </th>
+                    ))}
+                    <th className="py-2 pr-3 font-normal">Phone</th>
+                    <th className="py-2 pr-3 font-normal">Roll No</th>
+                    <th className="py-2 pr-3 font-normal">Group</th>
+                    <th className="py-2 pr-3 font-normal">Exam</th>
+                    <th className="py-2 pr-3 font-normal">Status</th>
+                    <th className="py-2 pr-3 font-normal">Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {dirLoading ? (
+                    <tr>
+                      <td colSpan={9} className="py-6 text-muted-foreground">
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : !pageRows.length ? (
+                    <tr>
+                      <td colSpan={9} className="py-6 text-muted-foreground">
+                        No participants yet. Add one above or bulk-upload a file.
+                      </td>
+                    </tr>
+                  ) : (
+                    pageRows.map((d) => (
+                      <tr key={d.id} className="border-b border-border">
+                        <td className="py-2.5 pr-3">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(d.id)}
+                            onChange={(e) => {
+                              setSelected((s) => {
+                                const next = new Set(s);
+                                if (e.target.checked) next.add(d.id);
+                                else next.delete(d.id);
+                                return next;
+                              });
+                            }}
+                            aria-label={`Select ${d.email}`}
+                          />
+                        </td>
+                        <td className="py-2.5 pr-3 font-medium">{d.name}</td>
+                        <td className="py-2.5 pr-3 text-muted-foreground">{d.email}</td>
+                        <td className="py-2.5 pr-3">{d.phone || "—"}</td>
+                        <td className="py-2.5 pr-3">{d.roll_no || "—"}</td>
+                        <td className="py-2.5 pr-3">{d.group_name || "—"}</td>
+                        <td className="py-2.5 pr-3 text-muted-foreground">{d.exam_title ?? "—"}</td>
+                        <td className="py-2.5 pr-3">{d.is_active ? "Active" : "Inactive"}</td>
+                        <td className="py-2.5 pr-3">
+                          <span className="flex flex-wrap gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="rounded-full"
+                              title="Edit"
+                              onClick={() => openEdit(d)}
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="rounded-full"
+                              title="Reset password"
+                              onClick={() => void handleRegen(d.id, d.email)}
+                            >
+                              <RefreshCw className="size-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="rounded-full"
+                              title="Assign to exam"
+                              onClick={() => {
+                                setAssignId(d.id);
+                                setAssignExam(d.exam_id ?? "");
+                              }}
+                            >
+                              <Plus className="size-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="rounded-full text-destructive"
+                              title="Delete"
+                              onClick={() => setDeleteId(d.id)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-        <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
-          <Button
-            size="sm"
-            variant="outline"
-            className="rounded-full"
-            disabled={page === 0}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            Previous
-          </Button>
-          <span>
-            Page {page + 1} of {pages}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            className="rounded-full"
-            disabled={page + 1 >= pages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      </section>
+            <div className="mt-3 flex items-center gap-3 text-sm text-muted-foreground">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full"
+                disabled={page === 0}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                Previous
+              </Button>
+              <span>
+                Page {page + 1} of {pages}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full"
+                disabled={page + 1 >= pages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </section>
+        </>
+      ) : null}
 
       {/* Edit modal */}
       {editing ? (

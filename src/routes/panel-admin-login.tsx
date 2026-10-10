@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -10,6 +10,14 @@ import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/panel-admin-login")({
   ssr: false,
+  beforeLoad: async () => {
+    // Already signed in? Skip the form — replace so login never stays in
+    // history (keeps Android-back from returning here after sign-in).
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session) throw redirect({ to: "/panel-admin", search: { view: "dashboard" } });
+  },
   head: () => ({
     meta: [
       { title: `Organizer Login — ${brand.appName}` },
@@ -45,7 +53,8 @@ function AdminLogin() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        navigate({ to: "/panel-admin", search: { view: "dashboard" } });
+        // Replace: back must never return to the login form after sign-in.
+        navigate({ to: "/panel-admin", search: { view: "dashboard" }, replace: true });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign in failed.");

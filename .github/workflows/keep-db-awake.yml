@@ -1,0 +1,34 @@
+# Keeps the Supabase project from auto-pausing (free tier pauses after
+# ~7 days of inactivity) by running a trivial read every 4 days.
+name: Keep database awake
+
+on:
+  schedule:
+    # Every 4th day of the month at 06:00 UTC.
+    # (Cron has no true "every 4 days" — day-of-month */4 gives gaps of
+    # 2-4 days at month boundaries, always safely under the 7-day pause.)
+    - cron: "0 6 */4 * *"
+  # Allow manual runs from the Actions tab (also useful right after setup).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Ping Supabase (keep-alive)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/keep-db-awake.mjs

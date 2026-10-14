@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { brand } from "@/config/brand";
-import { supabase } from "@/integrations/supabase/client";
+import { authClient } from "@/integrations/turso/auth-client";
 import type { AdminExam } from "@/lib/admin.functions";
 import { DashboardView } from "@/components/organizer/DashboardView";
 import { ExamsView } from "@/components/organizer/ExamsView";
@@ -29,7 +29,7 @@ export const Route = createFileRoute("/panel-admin")({
     // Android-back navigation in the installed PWA).
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await authClient.getSession();
     if (!session) throw redirect({ to: "/panel-admin-login" });
   },
   head: () => ({
@@ -101,7 +101,7 @@ function AdminPanel() {
     allowLeave.current = true;
     await queryClient.cancelQueries();
     queryClient.clear();
-    await supabase.auth.signOut();
+    await authClient.signOut();
     navigate({ to: "/panel-admin-login", replace: true });
   }
 

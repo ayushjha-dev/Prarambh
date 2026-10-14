@@ -1,14 +1,31 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import type { Database } from "@/integrations/supabase/types";
+import { requireOrganizerAuth } from "@/integrations/turso/auth-middleware";
+
+/** exams-table update payload (replaces the generated Supabase Database type). */
+type ExamUpdate = Partial<{
+  title: string;
+  subject: string;
+  description: string;
+  duration_minutes: number;
+  marks_correct: number;
+  marks_wrong: number;
+  total_marks: number | null;
+  passing_marks: number | null;
+  status: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  is_enabled: boolean;
+}>;
 import { z } from "zod";
 
 async function assertAdmin(context: any) {
-  const { data: isAdmin } = await context.supabase.rpc("has_role", {
-    _user_id: context.userId,
-    _role: "admin",
-  });
-  if (!isAdmin) throw new Error("Forbidden");
+  const { db } = await import("@/integrations/turso/client.server");
+  const { data: row } = await db
+    .from("organizers")
+    .select("role")
+    .eq("id", context.userId)
+    .maybeSingle();
+  if (row?.role !== "admin") throw new Error("Forbidden");
 }
 
 // ------------------------------------------------------------ credential kit
@@ -71,7 +88,7 @@ function slugifyTitle(title: string): string {
   return words || "exam";
 }
 
-async function generateUniqueSlug(supabaseAdmin: any, title: string): Promise<string> {
+async function generateUniqueSlug(db: any, title: string): Promise<string> {
   const base = slugifyTitle(title);
   for (let attempt = 0; attempt < 5; attempt++) {
     const suffix = (await randomToken(6))
@@ -79,7 +96,7 @@ async function generateUniqueSlug(supabaseAdmin: any, title: string): Promise<st
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "x");
     const slug = `${base}-${suffix}`.replace(/-+/g, "-");
-    const { data } = await supabaseAdmin.from("exams").select("id").eq("slug", slug).maybeSingle();
+    const { data } = await db.from("exams").select("id").eq("slug", slug).maybeSingle();
     if (!data) return slug;
   }
   return `${base}-${Date.now().toString(36)}`;
@@ -141,16 +158,16 @@ export type AdminStudent = {
  * Select helper that tolerates databases where the organizer-panel migration
  * has not been applied yet: falls back to the legacy column list.
  */
-async function selectExamsRows(supabaseAdmin: any) {
+async function selectExamsRows(db: any) {
   const full =
     "id, slug, title, subject, description, duration_minutes, marks_correct, marks_wrong, total_marks, passing_marks, status, starts_at, ends_at, is_enabled, created_at, question_set_id";
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await db
     .from("exams")
     .select(full)
     .order("created_at", { ascending: false });
   if (!error) return data ?? [];
   if (!/column|schema cache/i.test(error.message)) throw new Error(error.message);
-  const legacy = await supabaseAdmin
+  const legacy = await db
     .from("exams")
     .select(
       "id, slug, title, description, duration_minutes, marks_correct, marks_wrong, starts_at, ends_at, is_enabled, created_at, question_set_id",
@@ -166,11 +183,11 @@ async function selectExamsRows(supabaseAdmin: any) {
   }));
 }
 
-async function selectParticipantsRows(supabaseAdmin: any) {
-  const { data, error } = await supabaseAdmin.from("participants").select("*");
+async function selectParticipantsRows(db: any) {
+  const { data, error } = await db.from("participants").select("*");
   if (!error) return data ?? [];
   if (!/column|schema cache/i.test(error.message)) throw new Error(error.message);
-  const legacy = await supabaseAdmin.from("participants").select("*");
+  const legacy = await db.from("participants").select("*");
   if (legacy.error) throw new Error(legacy.error.message);
   return (legacy.data ?? []).map((p: any) => ({
     ...p,
@@ -183,17 +200,17 @@ async function selectParticipantsRows(supabaseAdmin: any) {
 
 // ------------------------------------------------------------------ exams
 export const adminListExams = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
 
-    const exams = await selectExamsRows(supabaseAdmin);
+    const exams = await selectExamsRows(db);
 
     const examIds = (exams ?? []).map((e: any) => e.id);
     const counts = new Map<string, { total: number; completed: number }>();
     if (examIds.length) {
-      const { data: parts } = await supabaseAdmin
+      const { data: parts } = await db
         .from("participants")
         .select("exam_id, status")
         .in("exam_id", examIds);
@@ -209,7 +226,7 @@ export const adminListExams = createServerFn({ method: "POST" })
     const qCounts = new Map<string, number>();
     const qMarks = new Map<string, number>();
     if (setIds.length) {
-      const { data: sets } = await supabaseAdmin
+      const { data: sets } = await db
         .from("question_sets")
         .select("id, data")
         .in("id", setIds);
@@ -249,11 +266,11 @@ export const adminListExams = createServerFn({ method: "POST" })
 
 /** Organizer dashboard stats — GET /api/organizer/dashboard-stats equivalent. */
 export const adminOrganizerStats = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const exams = await selectExamsRows(supabaseAdmin);
+    const { db } = await import("@/integrations/turso/client.server");
+    const exams = await selectExamsRows(db);
     const now = Date.now();
     const conducted = exams.filter(
       (e: any) => e.status === "completed" || (e.ends_at && now > new Date(e.ends_at).getTime()),
@@ -262,7 +279,7 @@ export const adminOrganizerStats = createServerFn({ method: "POST" })
       (e: any) => e.starts_at && now < new Date(e.starts_at).getTime(),
     ).length;
 
-    const participants = await selectParticipantsRows(supabaseAdmin);
+    const participants = await selectParticipantsRows(db);
     const attempted = (participants as any[]).filter((p) => p.status && p.status !== "not_started");
     const uniqueEmails = new Set(attempted.map((p) => String(p.email).toLowerCase()));
 
@@ -329,34 +346,34 @@ function validateWindow(starts_at?: string | null, ends_at?: string | null) {
 }
 
 /** Insert that drops unknown columns when the migration has not been applied. */
-async function insertExamRow(supabaseAdmin: any, row: Record<string, any>) {
-  let res = await supabaseAdmin.from("exams").insert(row).select("id, slug").single();
+async function insertExamRow(db: any, row: Record<string, any>) {
+  let res = await db.from("exams").insert(row).select("id, slug").single();
   if (res.error && /column|schema cache/i.test(res.error.message)) {
     const { subject, total_marks, passing_marks, status, ...legacy } = row;
-    res = await supabaseAdmin.from("exams").insert(legacy).select("id, slug").single();
+    res = await db.from("exams").insert(legacy).select("id, slug").single();
   }
   return res;
 }
 
-async function updateExamRow(supabaseAdmin: any, id: string, patch: Record<string, any>) {
-  let res = await supabaseAdmin.from("exams").update(patch).eq("id", id);
+async function updateExamRow(db: any, id: string, patch: Record<string, any>) {
+  let res = await db.from("exams").update(patch).eq("id", id);
   if (res.error && /column|schema cache/i.test(res.error.message)) {
     const { subject, total_marks, passing_marks, status, ...legacy } = patch;
-    res = await supabaseAdmin.from("exams").update(legacy).eq("id", id);
+    res = await db.from("exams").update(legacy).eq("id", id);
   }
   return res;
 }
 
 export const adminCreateExam = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => examInput.parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     validateWindow(data.starts_at ?? null, data.ends_at ?? null);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
 
-    const slug = await generateUniqueSlug(supabaseAdmin, data.title);
-    const { data: created, error } = await insertExamRow(supabaseAdmin, {
+    const slug = await generateUniqueSlug(db, data.title);
+    const { data: created, error } = await insertExamRow(db, {
       slug,
       title: data.title.trim(),
       subject: data.subject ?? "",
@@ -379,7 +396,7 @@ export const adminCreateExam = createServerFn({ method: "POST" })
   });
 
 export const adminUpdateExam = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z
       .object({
@@ -401,8 +418,8 @@ export const adminUpdateExam = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: current } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: current } = await db
       .from("exams")
       .select("starts_at, ends_at, total_marks, passing_marks")
       .eq("id", data.id)
@@ -421,7 +438,7 @@ export const adminUpdateExam = createServerFn({ method: "POST" })
     if (total != null && passing != null && passing > total) {
       throw new Error("Passing marks cannot exceed total marks.");
     }
-    const patch: Database["public"]["Tables"]["exams"]["Update"] = {};
+    const patch: ExamUpdate = {};
     if (data.title !== undefined) patch.title = data.title;
     if (data.subject !== undefined) patch.subject = data.subject;
     if (data.description !== undefined) patch.description = data.description;
@@ -434,7 +451,7 @@ export const adminUpdateExam = createServerFn({ method: "POST" })
     if (data.starts_at !== undefined) patch.starts_at = data.starts_at;
     if (data.ends_at !== undefined) patch.ends_at = data.ends_at;
     if (data.is_enabled !== undefined) patch.is_enabled = data.is_enabled;
-    const { error } = await updateExamRow(supabaseAdmin, data.id, patch);
+    const { error } = await updateExamRow(db, data.id, patch);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -445,21 +462,21 @@ export const adminUpdateExam = createServerFn({ method: "POST" })
  * that case. DELETE /api/organizer/exams/:id equivalent.
  */
 export const adminDeleteExam = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z.object({ id: z.string().uuid(), force: z.boolean().optional().default(false) }).parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: exam } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: exam } = await db
       .from("exams")
       .select("id, question_set_id")
       .eq("id", data.id)
       .maybeSingle();
     if (!exam) throw new Error("Exam not found.");
 
-    const { data: parts } = await supabaseAdmin
+    const { data: parts } = await db
       .from("participants")
       .select("id, status")
       .eq("exam_id", data.id);
@@ -472,23 +489,23 @@ export const adminDeleteExam = createServerFn({ method: "POST" })
 
     const ids = ((parts ?? []) as any[]).map((p) => p.id);
     if (ids.length) {
-      await supabaseAdmin.from("responses").delete().in("participant_id", ids);
-      await supabaseAdmin.from("results").delete().in("participant_id", ids);
-      const { error: pErr } = await supabaseAdmin.from("participants").delete().in("id", ids);
+      await db.from("responses").delete().in("participant_id", ids);
+      await db.from("results").delete().in("participant_id", ids);
+      const { error: pErr } = await db.from("participants").delete().in("id", ids);
       if (pErr) throw new Error(pErr.message);
     }
-    const { error: eErr } = await supabaseAdmin.from("exams").delete().eq("id", data.id);
+    const { error: eErr } = await db.from("exams").delete().eq("id", data.id);
     if (eErr) throw new Error(eErr.message);
 
     // Remove the linked question set when no other exam references it.
     if (exam.question_set_id) {
-      const { data: refs } = await supabaseAdmin
+      const { data: refs } = await db
         .from("exams")
         .select("id")
         .eq("question_set_id", exam.question_set_id)
         .limit(1);
       if (!refs?.length) {
-        await supabaseAdmin.from("question_sets").delete().eq("id", exam.question_set_id);
+        await db.from("question_sets").delete().eq("id", exam.question_set_id);
       }
     }
     return { ok: true, removedParticipants: ids.length };
@@ -499,13 +516,13 @@ export const adminDeleteExam = createServerFn({ method: "POST" })
  * Unpublishing returns it to draft.
  */
 export const adminPublishExam = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid(), publish: z.boolean() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
     if (data.publish) {
-      const { data: exam } = await supabaseAdmin
+      const { data: exam } = await db
         .from("exams")
         .select("question_set_id")
         .eq("id", data.id)
@@ -513,7 +530,7 @@ export const adminPublishExam = createServerFn({ method: "POST" })
       if (!exam) throw new Error("Exam not found.");
       let count = 0;
       if (exam.question_set_id) {
-        const { data: set } = await supabaseAdmin
+        const { data: set } = await db
           .from("question_sets")
           .select("data")
           .eq("id", exam.question_set_id)
@@ -523,44 +540,44 @@ export const adminPublishExam = createServerFn({ method: "POST" })
           : 0;
       }
       if (!count) throw new Error("Add at least 1 question before publishing this exam.");
-      const { error } = await updateExamRow(supabaseAdmin, data.id, {
+      const { error } = await updateExamRow(db, data.id, {
         is_enabled: true,
         status: "live",
       });
       if (error) throw new Error(error.message);
     } else {
-      const { error } = await updateExamRow(supabaseAdmin, data.id, { status: "draft" });
+      const { error } = await updateExamRow(db, data.id, { status: "draft" });
       if (error) throw new Error(error.message);
     }
     return { ok: true };
   });
 
 export const adminRegenerateSlug = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: current } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: current } = await db
       .from("exams")
       .select("id, title")
       .eq("id", data.id)
       .maybeSingle();
     if (!current) throw new Error("Exam not found.");
-    const slug = await generateUniqueSlug(supabaseAdmin, current.title as string);
-    const { error } = await supabaseAdmin.from("exams").update({ slug }).eq("id", data.id);
+    const slug = await generateUniqueSlug(db, current.title as string);
+    const { error } = await db.from("exams").update({ slug }).eq("id", data.id);
     if (error) throw new Error(error.message);
     return { slug };
   });
 
 // ---------------------------------------------------------------- students
 export const adminListStudents = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ examId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: rows, error } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: rows, error } = await db
       .from("participants")
       .select("id, name, email, phone, roll_no, group_name, is_active, exam_id, status, created_at")
       .eq("exam_id", data.examId)
@@ -568,7 +585,7 @@ export const adminListStudents = createServerFn({ method: "POST" })
       .limit(5000);
     if (error) {
       if (/column|schema cache/i.test(error.message)) {
-        const legacy = await supabaseAdmin
+        const legacy = await db
           .from("participants")
           .select("id, name, email, status, created_at")
           .eq("exam_id", data.examId)
@@ -596,12 +613,12 @@ export const adminListStudents = createServerFn({ method: "POST" })
 
 /** Full participant directory across exams — Participants portal table. */
 export const adminListAllParticipants = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const participants = await selectParticipantsRows(supabaseAdmin);
-    const exams = await selectExamsRows(supabaseAdmin);
+    const { db } = await import("@/integrations/turso/client.server");
+    const participants = await selectParticipantsRows(db);
+    const exams = await selectExamsRows(db);
     const titles = new Map((exams as any[]).map((e) => [e.id, e.title]));
     const rows: AdminStudent[] = (participants as any[])
       .map((p) => ({
@@ -624,7 +641,7 @@ export const adminListAllParticipants = createServerFn({ method: "POST" })
 export type ParticipantExtras = { phone?: string; roll_no?: string; group_name?: string };
 
 async function insertStudent(
-  supabaseAdmin: any,
+  db: any,
   examId: string,
   name: string,
   email: string,
@@ -632,7 +649,7 @@ async function insertStudent(
 ): Promise<{ id: string; email: string; password: string }> {
   const password = await generateStudentPassword(10);
   const { salt, hash } = await hashPassword(password);
-  let res = await supabaseAdmin
+  let res = await db
     .from("participants")
     .insert({
       exam_id: examId,
@@ -649,7 +666,7 @@ async function insertStudent(
     .select("id")
     .single();
   if (res.error && /column|schema cache/i.test(res.error.message)) {
-    res = await supabaseAdmin
+    res = await db
       .from("participants")
       .insert({
         exam_id: examId,
@@ -678,7 +695,7 @@ const bulkStudentSchema = z.object({
 });
 
 export const adminAddStudent = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z
       .object({
@@ -693,10 +710,10 @@ export const adminAddStudent = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
     // The plain password is returned exactly once — the organizer must copy it
     // or download the credentials CSV now; only the hash is stored.
-    return insertStudent(supabaseAdmin, data.examId, data.name, data.email, {
+    return insertStudent(db, data.examId, data.name, data.email, {
       phone: data.phone,
       roll_no: data.roll_no,
       group_name: data.group_name,
@@ -704,7 +721,7 @@ export const adminAddStudent = createServerFn({ method: "POST" })
   });
 
 export const adminBulkAddStudents = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z
       .object({
@@ -715,7 +732,7 @@ export const adminBulkAddStudents = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
     const added: { email: string; password: string }[] = [];
     const skipped: { email: string; reason: string }[] = [];
     const seen = new Set<string>();
@@ -727,7 +744,7 @@ export const adminBulkAddStudents = createServerFn({ method: "POST" })
       }
       seen.add(email);
       try {
-        const r = await insertStudent(supabaseAdmin, data.examId, s.name, email, {
+        const r = await insertStudent(db, data.examId, s.name, email, {
           phone: s.phone,
           roll_no: s.roll_no,
           group_name: s.group_name,
@@ -741,14 +758,14 @@ export const adminBulkAddStudents = createServerFn({ method: "POST" })
   });
 
 export const adminRegenerateStudentPassword = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ participantId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
     const password = await generateStudentPassword(10);
     const { salt, hash } = await hashPassword(password);
-    const { error } = await supabaseAdmin
+    const { error } = await db
       .from("participants")
       .update({ password_salt: salt, password_hash: hash, failed_attempts: 0, locked_until: null })
       .eq("id", data.participantId);
@@ -800,7 +817,7 @@ const bulkSendRowSchema = z.object({
  * email failing never stops the rest. Summary returned at the end.
  */
 export const adminBulkSendCredentials = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z
       .object({
@@ -819,9 +836,9 @@ export const adminBulkSendCredentials = createServerFn({ method: "POST" })
         "Email sending is not configured. Set RESEND_API_KEY, RESEND_FROM and APP_URL on the server.",
       );
     }
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
 
-    const { data: exam } = await supabaseAdmin
+    const { data: exam } = await db
       .from("exams")
       .select("id, title, slug, created_by")
       .eq("id", data.examId)
@@ -832,7 +849,7 @@ export const adminBulkSendCredentials = createServerFn({ method: "POST" })
     }
     const examLink = `${APP_URL.replace(/\/$/, "")}/exam/${exam.slug}`;
 
-    const { data: existing } = await supabaseAdmin
+    const { data: existing } = await db
       .from("participants")
       .select("id, email, roll_no")
       .eq("exam_id", data.examId);
@@ -867,7 +884,7 @@ export const adminBulkSendCredentials = createServerFn({ method: "POST" })
         const password = await generateSecurePassword(12);
         const { salt, hash } = await hashPassword(password);
         if (match) {
-          const { error } = await supabaseAdmin
+          const { error } = await db
             .from("participants")
             .update({
               name: s.name.trim(),
@@ -882,7 +899,7 @@ export const adminBulkSendCredentials = createServerFn({ method: "POST" })
         } else {
           if (usedRolls.has(roll))
             throw new Error(`Roll no ${roll} is already registered for this exam.`);
-          const { data: created, error } = await supabaseAdmin
+          const { data: created, error } = await db
             .from("participants")
             .insert({
               exam_id: data.examId,
@@ -955,7 +972,7 @@ export const adminBulkSendCredentials = createServerFn({ method: "POST" })
 
 /** Edit a participant's directory fields. PUT /api/organizer/participants/:id */
 export const adminUpdateParticipant = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z
       .object({
@@ -971,7 +988,7 @@ export const adminUpdateParticipant = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
     const participantId = data.participantId;
     const patch: Record<string, string | boolean> = {};
     if (data.name !== undefined) patch["name"] = data.name.trim();
@@ -980,13 +997,13 @@ export const adminUpdateParticipant = createServerFn({ method: "POST" })
     if (data.roll_no !== undefined) patch["roll_no"] = data.roll_no.trim();
     if (data.group_name !== undefined) patch["group_name"] = data.group_name.trim();
     if (data.is_active !== undefined) patch["is_active"] = data.is_active;
-    let res = await supabaseAdmin
+    let res = await db
       .from("participants")
       .update(patch as never)
       .eq("id", participantId);
     if (res.error && /column|schema cache/i.test(res.error.message)) {
       const { phone: _ph, roll_no: _rn, group_name: _gn, is_active: _ia, ...legacy } = patch;
-      res = await supabaseAdmin
+      res = await db
         .from("participants")
         .update(legacy as never)
         .eq("id", participantId);
@@ -1001,16 +1018,16 @@ export const adminUpdateParticipant = createServerFn({ method: "POST" })
 
 /** Bulk delete participants with their attempts. */
 export const adminBulkDeleteParticipants = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z.object({ participantIds: z.array(z.string().uuid()).min(1).max(2000) }).parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin.from("responses").delete().in("participant_id", data.participantIds);
-    await supabaseAdmin.from("results").delete().in("participant_id", data.participantIds);
-    const { error } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    await db.from("responses").delete().in("participant_id", data.participantIds);
+    await db.from("results").delete().in("participant_id", data.participantIds);
+    const { error } = await db
       .from("participants")
       .delete()
       .in("id", data.participantIds);
@@ -1020,14 +1037,14 @@ export const adminBulkDeleteParticipants = createServerFn({ method: "POST" })
 
 /** Assign a participant to a specific exam (moves their credential). */
 export const adminMoveParticipant = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z.object({ participantId: z.string().uuid(), examId: z.string().uuid() }).parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: p } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: p } = await db
       .from("participants")
       .select("id, email, status")
       .eq("id", data.participantId)
@@ -1036,7 +1053,7 @@ export const adminMoveParticipant = createServerFn({ method: "POST" })
     if (p.status !== "not_started") {
       throw new Error("Only participants who have not started can be moved between exams.");
     }
-    const { error } = await supabaseAdmin
+    const { error } = await db
       .from("participants")
       .update({ exam_id: data.examId })
       .eq("id", data.participantId);
@@ -1049,7 +1066,7 @@ export const adminMoveParticipant = createServerFn({ method: "POST" })
   });
 
 export const adminEmailCredentials = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z
       .object({
@@ -1065,8 +1082,8 @@ export const adminEmailCredentials = createServerFn({ method: "POST" })
     // No SMTP is configured in this project, so delivery happens through the
     // organizer's own mail client: the dashboard builds `mailto:` links from
     // the returned rows. If SMTP is added later, send here instead.
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: exam } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: exam } = await db
       .from("exams")
       .select("id, slug, title")
       .eq("id", data.examId)
@@ -1083,13 +1100,13 @@ export const adminEmailCredentials = createServerFn({ method: "POST" })
 
 // ------------------------------------------------- results / participants
 export const adminDashboard = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ examId: z.string().uuid().optional() }).parse(input ?? {}))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
 
-    let query = supabaseAdmin
+    let query = db
       .from("participants")
       .select(
         "id, name, email, status, tab_violation_count, submit_reason, exam_submitted_at, time_taken_seconds",
@@ -1103,7 +1120,7 @@ export const adminDashboard = createServerFn({ method: "POST" })
     const ids = (participants ?? []).map((p: any) => p.id);
     let byId = new Map<string, any>();
     if (ids.length) {
-      const { data: results } = await supabaseAdmin
+      const { data: results } = await db
         .from("results")
         .select("participant_id, total_correct, total_wrong, total_unattempted, total_marks")
         .in("participant_id", ids);
@@ -1137,7 +1154,7 @@ export const adminDashboard = createServerFn({ method: "POST" })
       title: string;
     } | null = null;
     if (data?.examId) {
-      const exams = await selectExamsRows(supabaseAdmin);
+      const exams = await selectExamsRows(db);
       const e: any = exams.find((x: any) => x.id === data.examId);
       if (e) {
         examMeta = {
@@ -1161,14 +1178,21 @@ export const adminDashboard = createServerFn({ method: "POST" })
     };
   });
 
+/** Row shape from `responses` used by the review screen. */
+type ResponseRow = {
+  question_id: number;
+  selected_option: string | null;
+  marks_awarded: number;
+};
+
 export const adminParticipantDetail = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ participantId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
 
-    const { data: p } = await supabaseAdmin
+    const { data: p } = await db
       .from("participants")
       .select(
         "id, name, email, status, question_set_id, exam_id, time_taken_seconds, tab_violation_count",
@@ -1177,20 +1201,20 @@ export const adminParticipantDetail = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!p) throw new Error("Participant not found");
 
-    const { data: responses } = await supabaseAdmin
+    const { data: responses } = await db
       .from("responses")
       .select("question_id, selected_option, is_correct, marks_awarded")
       .eq("participant_id", p.id);
 
     let qs: any = null;
     if (p.exam_id) {
-      const { data: exam } = await supabaseAdmin
+      const { data: exam } = await db
         .from("exams")
         .select("question_set_id")
         .eq("id", p.exam_id)
         .maybeSingle();
       if (exam?.question_set_id) {
-        const { data } = await supabaseAdmin
+        const { data } = await db
           .from("question_sets")
           .select("data")
           .eq("id", exam.question_set_id)
@@ -1199,7 +1223,7 @@ export const adminParticipantDetail = createServerFn({ method: "POST" })
       }
     }
     if (!qs) {
-      let setQuery = supabaseAdmin.from("question_sets").select("data");
+      let setQuery = db.from("question_sets").select("data");
       setQuery = p.question_set_id
         ? setQuery.eq("id", p.question_set_id)
         : setQuery.eq("is_active", true);
@@ -1207,7 +1231,9 @@ export const adminParticipantDetail = createServerFn({ method: "POST" })
       qs = data;
     }
 
-    const responseMap = new Map((responses ?? []).map((r: any) => [r.question_id, r]));
+    const responseMap = new Map<number, ResponseRow>(
+      (responses ?? []).map((r: any) => [r.question_id, r as ResponseRow]),
+    );
     const questions = ((qs?.data as any)?.questions ?? []).map((q: any) => {
       const r = responseMap.get(Number(q.id));
       return {
@@ -1225,25 +1251,25 @@ export const adminParticipantDetail = createServerFn({ method: "POST" })
   });
 
 export const adminResetParticipant = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ participantId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
 
-    const { error: responsesError } = await supabaseAdmin
+    const { error: responsesError } = await db
       .from("responses")
       .delete()
       .eq("participant_id", data.participantId);
     if (responsesError) throw new Error(responsesError.message);
 
-    const { error: resultError } = await supabaseAdmin
+    const { error: resultError } = await db
       .from("results")
       .delete()
       .eq("participant_id", data.participantId);
     if (resultError) throw new Error(resultError.message);
 
-    const { data: participant, error: participantError } = await supabaseAdmin
+    const { data: participant, error: participantError } = await db
       .from("participants")
       .update({
         status: "not_started",
@@ -1265,25 +1291,25 @@ export const adminResetParticipant = createServerFn({ method: "POST" })
   });
 
 export const adminDeleteParticipant = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ participantId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
 
-    const { error: responsesError } = await supabaseAdmin
+    const { error: responsesError } = await db
       .from("responses")
       .delete()
       .eq("participant_id", data.participantId);
     if (responsesError) throw new Error(responsesError.message);
 
-    const { error: resultError } = await supabaseAdmin
+    const { error: resultError } = await db
       .from("results")
       .delete()
       .eq("participant_id", data.participantId);
     if (resultError) throw new Error(resultError.message);
 
-    const { data: participant, error: participantError } = await supabaseAdmin
+    const { data: participant, error: participantError } = await db
       .from("participants")
       .delete()
       .eq("id", data.participantId)
@@ -1296,19 +1322,19 @@ export const adminDeleteParticipant = createServerFn({ method: "POST" })
   });
 
 export const adminGetQuestionSet = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ examId: z.string().uuid().optional() }).parse(input ?? {}))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
     if (data?.examId) {
-      const { data: exam } = await supabaseAdmin
+      const { data: exam } = await db
         .from("exams")
         .select("question_set_id")
         .eq("id", data.examId)
         .maybeSingle();
       if (!exam?.question_set_id) return null;
-      const { data: set } = await supabaseAdmin
+      const { data: set } = await db
         .from("question_sets")
         .select("id, data, created_at")
         .eq("id", exam.question_set_id)
@@ -1321,7 +1347,7 @@ export const adminGetQuestionSet = createServerFn({ method: "POST" })
         count: ((set.data as any)?.questions ?? []).length as number,
       };
     }
-    const { data: active } = await supabaseAdmin
+    const { data: active } = await db
       .from("question_sets")
       .select("id, data, created_at")
       .eq("is_active", true)
@@ -1363,7 +1389,7 @@ const questionSchema = z.object({
     .min(1)
     .transform((s) => normalizeCorrect(s))
     .refine((s) => s.length > 0, { message: "Correct answer must be letter(s) A–D." }),
-  marks: z.number().positive().optional().default(0),
+  marks: z.number().nonnegative().optional().default(0),
   explanation: z.string().optional().default(""),
   answer_text: z.string().optional(),
 });
@@ -1384,8 +1410,8 @@ const setSchema = z.object({
 type StoredQuestion = z.infer<typeof questionSchema>;
 
 /** Load the exam's question-set doc (or null when none is linked yet). */
-async function getExamSetDoc(supabaseAdmin: any, examId: string) {
-  const { data: exam } = await supabaseAdmin
+async function getExamSetDoc(db: any, examId: string) {
+  const { data: exam } = await db
     .from("exams")
     .select("id, title, duration_minutes, marks_correct, marks_wrong, question_set_id")
     .eq("id", examId)
@@ -1393,7 +1419,7 @@ async function getExamSetDoc(supabaseAdmin: any, examId: string) {
   if (!exam) throw new Error("Exam not found.");
   let doc: any = { meta: {}, questions: [] };
   if (exam.question_set_id) {
-    const { data: set } = await supabaseAdmin
+    const { data: set } = await db
       .from("question_sets")
       .select("id, data")
       .eq("id", exam.question_set_id)
@@ -1420,27 +1446,27 @@ function defaultMetaFor(exam: any, count: number, questions: any[]) {
 
 /** Persist the question array back (creates + links a set on first use). */
 async function saveExamSetDoc(
-  supabaseAdmin: any,
+  db: any,
   exam: any,
   setId: string | null,
   questions: any[],
 ) {
   const doc = { meta: defaultMetaFor(exam, questions.length, questions), questions };
   if (setId) {
-    const { error } = await supabaseAdmin
+    const { error } = await db
       .from("question_sets")
       .update({ data: doc })
       .eq("id", setId);
     if (error) throw new Error(error.message);
     return { setId, count: questions.length };
   }
-  const { data: inserted, error } = await supabaseAdmin
+  const { data: inserted, error } = await db
     .from("question_sets")
     .insert({ data: doc, is_active: false })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
-  const { error: linkError } = await supabaseAdmin
+  const { error: linkError } = await db
     .from("exams")
     .update({ question_set_id: inserted.id })
     .eq("id", exam.id);
@@ -1459,7 +1485,7 @@ const singleQuestionInput = z.object({
     .array(z.enum(["A", "B", "C", "D"]))
     .min(1)
     .max(4),
-  marks: z.number().positive().max(1000).optional().default(0),
+  marks: z.number().nonnegative().max(1000).optional().default(0),
   explanation: z.string().trim().max(2000).optional().default(""),
 });
 
@@ -1497,22 +1523,22 @@ function toStoredQuestion(id: number, input: z.infer<typeof singleQuestionInput>
 
 /** POST /api/organizer/exams/:examId/questions — add one question. */
 export const adminAddQuestion = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => singleQuestionInput.parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { exam, doc, setId } = await getExamSetDoc(supabaseAdmin, data.examId);
+    const { db } = await import("@/integrations/turso/client.server");
+    const { exam, doc, setId } = await getExamSetDoc(db, data.examId);
     const nextId =
       doc.questions.reduce((m: number, q: any) => Math.max(m, Number(q.id) || 0), 0) + 1;
     doc.questions.push(toStoredQuestion(nextId, data));
-    const saved = await saveExamSetDoc(supabaseAdmin, exam, setId, doc.questions);
+    const saved = await saveExamSetDoc(db, exam, setId, doc.questions);
     return { ok: true, id: nextId, ...saved };
   });
 
 /** PUT /api/organizer/exams/:examId/questions/:id — edit one question. */
 export const adminUpdateQuestion = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     singleQuestionInput
       .partial()
@@ -1521,8 +1547,8 @@ export const adminUpdateQuestion = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { exam, doc, setId } = await getExamSetDoc(supabaseAdmin, data.examId);
+    const { db } = await import("@/integrations/turso/client.server");
+    const { exam, doc, setId } = await getExamSetDoc(db, data.examId);
     const idx = doc.questions.findIndex((q: any) => Number(q.id) === data.questionId);
     if (idx < 0) throw new Error("Question not found.");
     const prev = doc.questions[idx];
@@ -1542,41 +1568,41 @@ export const adminUpdateQuestion = createServerFn({ method: "POST" })
       explanation: data.explanation ?? prev.explanation ?? "",
     });
     doc.questions[idx] = toStoredQuestion(data.questionId, merged);
-    const saved = await saveExamSetDoc(supabaseAdmin, exam, setId, doc.questions);
+    const saved = await saveExamSetDoc(db, exam, setId, doc.questions);
     return { ok: true, ...saved };
   });
 
 /** DELETE /api/organizer/exams/:examId/questions/:id — with confirmation in UI. */
 export const adminDeleteQuestion = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z.object({ examId: z.string().uuid(), questionId: z.number().int() }).parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { exam, doc, setId } = await getExamSetDoc(supabaseAdmin, data.examId);
+    const { db } = await import("@/integrations/turso/client.server");
+    const { exam, doc, setId } = await getExamSetDoc(db, data.examId);
     const before = doc.questions.length;
     doc.questions = doc.questions.filter((q: any) => Number(q.id) !== data.questionId);
     if (doc.questions.length === before) throw new Error("Question not found.");
     // Ids stay stable (responses reference them); no re-indexing.
-    const saved = await saveExamSetDoc(supabaseAdmin, exam, setId, doc.questions);
+    const saved = await saveExamSetDoc(db, exam, setId, doc.questions);
     return { ok: true, ...saved };
   });
 
 /** Full question list for the Add-Questions editor (includes answers — organizer only). */
 export const adminListQuestions = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) => z.object({ examId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { doc } = await getExamSetDoc(supabaseAdmin, data.examId);
+    const { db } = await import("@/integrations/turso/client.server");
+    const { doc } = await getExamSetDoc(db, data.examId);
     return { questions: (doc.questions ?? []) as StoredQuestion[] };
   });
 
 export const adminUploadQuestionSet = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z.object({ raw: z.string().min(2), examId: z.string().uuid().optional() }).parse(input),
   )
@@ -1603,8 +1629,8 @@ export const adminUploadQuestionSet = createServerFn({ method: "POST" })
     const ids = new Set(set.questions.map((q) => q.id));
     if (ids.size !== set.questions.length) throw new Error("Duplicate question ids found.");
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: inserted, error } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: inserted, error } = await db
       .from("question_sets")
       .insert({ data: set as any, is_active: data.examId ? false : true })
       .select("id")
@@ -1612,20 +1638,20 @@ export const adminUploadQuestionSet = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     if (data.examId) {
-      const { error: linkError } = await supabaseAdmin
+      const { error: linkError } = await db
         .from("exams")
         .update({ question_set_id: inserted.id })
         .eq("id", data.examId);
       if (linkError) throw new Error(linkError.message);
     } else {
-      await supabaseAdmin.from("question_sets").update({ is_active: false }).neq("id", inserted.id);
-      await supabaseAdmin.from("question_sets").update({ is_active: true }).eq("id", inserted.id);
+      await db.from("question_sets").update({ is_active: false }).neq("id", inserted.id);
+      await db.from("question_sets").update({ is_active: true }).eq("id", inserted.id);
     }
     return { ok: true, count: set.questions.length };
   });
 
 export const adminUpdateMeta = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireOrganizerAuth])
   .inputValidator((input) =>
     z
       .object({
@@ -1638,9 +1664,9 @@ export const adminUpdateMeta = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
     if (data.examId) {
-      const { error } = await supabaseAdmin
+      const { error } = await db
         .from("exams")
         .update({
           duration_minutes: data.duration_minutes,
@@ -1651,7 +1677,7 @@ export const adminUpdateMeta = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
       return { ok: true };
     }
-    const { data: active } = await supabaseAdmin
+    const { data: active } = await db
       .from("question_sets")
       .select("id, data")
       .eq("is_active", true)
@@ -1666,7 +1692,7 @@ export const adminUpdateMeta = createServerFn({ method: "POST" })
       marks_wrong: data.marks_wrong,
       max_marks: (doc.questions?.length ?? 0) * data.marks_correct,
     };
-    const { error } = await supabaseAdmin
+    const { error } = await db
       .from("question_sets")
       .update({ data: doc })
       .eq("id", active.id);

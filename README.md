@@ -15,7 +15,7 @@ server-side.
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)
 ![TanStack Start](https://img.shields.io/badge/TanStack-Start-12371D?logo=tanstack&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
-![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ECF8E?logo=supabase&logoColor=white)
+![Turso](https://img.shields.io/badge/Turso-libSQL%20database-4FF8D4?logo=turso&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
 
 [**Features**](#features) ·
@@ -58,39 +58,40 @@ server-side.
 
 **ExamPortal** removes the three pain points of running an online test:
 
-| Pain point | How ExamPortal solves it |
-| ---------- | ------------------------ |
-| Shared/open links get forwarded to anyone | Each exam gets a private, hard-to-guess slug URL (`/exam/<slug>`) with enable/disable, regeneration, and an optional start/end window |
-| One password for the whole class, impossible to audit | Per-student credentials — name + email + an auto-generated 10-char password, hashed with a unique salt, scoped to exactly one exam |
-| Answers lost, timers gamed, tabs switched | Server-authoritative clock, continuous answer persistence, and 3-strike full-screen proctoring with auto-submit |
+| Pain point                                            | How ExamPortal solves it                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared/open links get forwarded to anyone             | Each exam gets a private, hard-to-guess slug URL (`/exam/<slug>`) with enable/disable, regeneration, and an optional start/end window |
+| One password for the whole class, impossible to audit | Per-student credentials — name + email + an auto-generated 10-char password, hashed with a unique salt, scoped to exactly one exam    |
+| Answers lost, timers gamed, tabs switched             | Server-authoritative clock, continuous answer persistence, and 3-strike full-screen proctoring with auto-submit                       |
 
 Organizers run everything — exams, links, rosters, question sets, results —
 from a single guarded dashboard. Students need nothing but the link and their
 credentials.
 
 Built with **TanStack Start** (SSR + server functions), **React 19**,
-**Tailwind CSS 4**, **shadcn/ui**, and **Supabase** (Postgres + Auth).
+**Tailwind CSS 4**, **shadcn/ui**, and **Turso** (libSQL/SQLite database with
+custom organizer auth).
 
 ## Features
 
 ### For organizers
 
-| Area | What you get |
-| ---- | ------------ |
-| **Multi-exam links** | Every exam gets a unique slug URL (`/exam/<slug>`), a copy-link button, an enable/disable toggle, link regeneration, and an optional start/end window |
+| Area                      | What you get                                                                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Multi-exam links**      | Every exam gets a unique slug URL (`/exam/<slug>`), a copy-link button, an enable/disable toggle, link regeneration, and an optional start/end window                                |
 | **Credential management** | Auto-generated 10-char passwords (A–Z, a–z, 2–9, no ambiguous characters) shown once; single add, CSV bulk upload, regenerate, credentials-CSV download, and pre-filled email drafts |
-| **Question banks** | Upload a validated question-bank JSON per exam (or a global active set), with server-side checks for count mismatches and duplicate IDs |
-| **Results dashboard** | Per-exam stats (registered / completed / avg score / avg time), sortable participant table, per-student answer sheets, CSV exports, reset and delete actions |
-| **Branding** | A single config file (`src/config/brand.ts`) — rename and re-theme the whole product in one place |
+| **Question banks**        | Upload a validated question-bank JSON per exam (or a global active set), with server-side checks for count mismatches and duplicate IDs                                              |
+| **Results dashboard**     | Per-exam stats (registered / completed / avg score / avg time), sortable participant table, per-student answer sheets, CSV exports, reset and delete actions                         |
+| **Branding**              | A single config file (`src/config/brand.ts`) — rename and re-theme the whole product in one place                                                                                    |
 
 ### For students
 
-| Area | What you get |
-| ---- | ------------ |
-| **Simple login** | Name + email + organizer-generated password, scoped to one exam; show/hide password, loading states, friendly errors |
+| Area               | What you get                                                                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Simple login**   | Name + email + organizer-generated password, scoped to one exam; show/hide password, loading states, friendly errors                    |
 | **Proctored exam** | Full-screen enforcement, tab-switch/blur detection, 3-strike auto-submit, live countdown, continuous answer saving, timeout auto-submit |
-| **Resume-safe** | Reload the page mid-exam and your answers, timer, and violation count are all restored from the server |
-| **Results** | Instant confirmation screen after submission — no more “did it send?” anxiety |
+| **Resume-safe**    | Reload the page mid-exam and your answers, timer, and violation count are all restored from the server                                  |
+| **Results**        | Instant confirmation screen after submission — no more “did it send?” anxiety                                                           |
 
 ### Platform
 
@@ -117,30 +118,30 @@ flowchart TB
     subgraph Server["TanStack Start Server (SSR + Server Functions)"]
         ExamFn["exam.functions.ts<br/>getExamPublic · loginExamParticipant<br/>getExamBrief · getExamState<br/>startExam · saveAnswer<br/>reportViolation · submitExam"]
         AdminFn["admin.functions.ts<br/>exam CRUD · student CRUD<br/>password + slug generation<br/>results · question sets"]
-        AuthMW["auth-middleware.ts<br/>Supabase JWT guard (organizer fns)"]
+        AuthMW["auth-middleware.ts<br/>requireOrganizerAuth<br/>HMAC session-token guard"]
+        Rpc["rpc.ts (TypeScript)<br/>submitExam · incrementViolation<br/>one libSQL transaction"]
     end
 
-    subgraph SB["Supabase Project"]
-        PG[("Postgres<br/>exams · participants<br/>question_sets · responses<br/>results · user_roles")]
-        Auth["Supabase Auth<br/>organizer accounts"]
-        RPC["SECURITY DEFINER RPC<br/>submit_exam · increment_violation<br/>has_role · grant_first_admin"]
+    subgraph DBInfra["Turso (libSQL / SQLite)"]
+        DB[("Database<br/>exams · participants<br/>question_sets · responses<br/>organizers (bcrypt hashes)")]
+        Tokens["session-token.ts<br/>HMAC-SHA256 organizer tokens<br/>(signed with SESSION_SECRET)"]
     end
 
     Landing --> Login
     Login -->|session token<br/>scoped to slug| Instr
     Instr --> ExamUI
-    Org -->|Bearer JWT| AuthMW
+    Org -->|Bearer HMAC token| AuthMW
 
     Login <--> ExamFn
     Instr <--> ExamFn
     ExamFn <--> ExamUI
 
-    ExamFn -->|service_role| PG
+    ExamFn -->|libSQL| DB
     AdminFn --> AuthMW
-    AuthMW -->|verified user| AdminFn
-    AdminFn -->|service_role| PG
-    PG --> RPC
-    Auth -->|first signup = admin| PG
+    AuthMW -->|verified organizer| AdminFn
+    AdminFn -->|libSQL| DB
+    DB --> Rpc
+    Tokens -->|sign · verify| AuthMW
 ```
 
 **Request flow in words:**
@@ -148,15 +149,19 @@ flowchart TB
 1. **Student pages** call exam server functions with `{ slug, ... }`. Every
    lookup joins the participant row to its exam and compares slugs, so a
    session token issued for exam A is rejected inside exam B.
-2. **Organizer functions** pass through `requireSupabaseAuth` (validates the
-   Supabase JWT from the request) plus an `assertAdmin` role check, then use
-   the service-role client to bypass RLS safely on the server.
-3. **Scoring and violation counting** run inside Postgres (`submit_exam`,
-   `increment_violation`) as atomic, idempotent operations — safe under
+2. **Organizer functions** pass through `requireOrganizerAuth` (verifies the
+   HMAC-SHA256 session token issued at sign-in against `SESSION_SECRET` and
+   checks the `organizers` row is still active). There is no client-side DB
+   access anywhere — every query runs inside server functions.
+3. **Scoring and violation counting** run in TypeScript
+   (`src/integrations/turso/rpc.ts`) inside a single libSQL **transaction**
+   (`submitExam`, `incrementViolation`) — atomic and idempotent, safe under
    retries, reloads, and double-submit races.
-4. **Sessions** are opaque `session_token` UUIDs stored per exam in
-   `localStorage` (`examportal.session.<slug>`); passwords never leave the
-   server in plain text except at the moment of creation (shown once).
+4. **Sessions** — students hold opaque `session_token` UUIDs stored per exam
+   in `localStorage` (`examportal.session.<slug>`); organizers hold a
+   stateless HMAC token (30-day expiry) in `localStorage`. Passwords never
+   leave the server in plain text except at the moment of creation (shown
+   once).
 
 > [!NOTE]
 > The client clock is **display only**. The server computes the remaining time
@@ -174,47 +179,58 @@ erDiagram
     participants ||--o| results : "score"
 
     exams {
-        uuid id PK
+        text id PK "uuid (app-generated)"
         text slug UK "hard-to-guess URL part"
         text title
         text description
         int duration_minutes
-        numeric marks_correct
-        numeric marks_wrong
-        timestamptz starts_at "nullable"
-        timestamptz ends_at "nullable"
-        bool is_enabled
-        uuid question_set_id FK "nullable"
+        real marks_correct
+        real marks_wrong
+        text starts_at "ISO-8601, nullable"
+        text ends_at "ISO-8601, nullable"
+        int is_enabled "0|1"
+        text question_set_id FK "nullable"
+        text status "draft|scheduled|live|completed|archived"
     }
     participants {
-        uuid id PK
-        uuid exam_id FK "nullable (legacy rows)"
+        text id PK "uuid (app-generated)"
+        text exam_id FK "nullable (legacy rows)"
         text name
         text email "unique per exam"
-        text password_salt
-        text password_hash "sha256(salt+password)"
+        text password_salt '"bcrypt" marker'
+        text password_hash "bcrypt (legacy rows: sha256)"
         int failed_attempts
-        timestamptz locked_until
-        uuid session_token
+        text locked_until "ISO-8601"
+        text session_token UK
         text status "not_started|in_progress|completed"
     }
     question_sets {
-        uuid id PK
-        jsonb data "{meta, questions[]}"
-        bool is_active "legacy global set"
+        text id PK "uuid (app-generated)"
+        text data "JSON {meta, questions[]}"
+        int is_active "0|1 (legacy global set)"
     }
     responses {
-        uuid id PK
-        uuid participant_id FK
+        text id PK "uuid (app-generated)"
+        text participant_id FK
         int question_id
-        text selected_option "A|B|C|D|null"
+        text selected_option "A|B|C|D|A,C…|null"
+        int is_correct "0|1, written at submit"
+        real marks_awarded "written at submit"
     }
     results {
-        uuid participant_id PK_FK
+        text participant_id PK_FK
         int total_correct
         int total_wrong
         int total_unattempted
-        numeric total_marks
+        real total_marks
+    }
+    organizers {
+        text id PK "uuid (app-generated)"
+        text email UK
+        text password_hash "bcrypt"
+        text role "admin|user"
+        int failed_attempts
+        text locked_until "ISO-8601"
     }
 ```
 
@@ -224,71 +240,76 @@ erDiagram
   many exams, each with its own password.
 - `exams.slug` matches `^[a-z0-9]+(-[a-z0-9]+)*$` and is generated as
   `<3 title words>-<10 random chars>`.
-- `submit_exam` resolves the question set in order: **exam's set → the
-  participant's pinned set → the globally active set** (legacy fallback).
+- `submitExam` (in `src/integrations/turso/rpc.ts`) resolves the question set
+  in order: **exam's set → the participant's pinned set → the globally active
+  set** (legacy fallback).
 - Scoring columns (`total_correct`, `total_wrong`, `total_marks`, …) are
-  written only by the `submit_exam` RPC — never by client-side code.
+  written only inside the `submitExam` transaction — never by client-side
+  code.
+- Organizer sign-up is **bootstrap-only**: `/panel-admin-login` offers account
+  creation while the `organizers` table is empty; the first account becomes
+  the admin.
 
 ---
 
 ## Routing
 
-| URL | Page | Guard |
-| --- | ---- | ----- |
-| `/` | Landing page: hero, exam-link/code lookup, features, how-it-works, organizer CTA | public |
-| `/exam` | “Find your exam” helper (paste link/code) | public |
-| `/exam/:slug` | Exam-specific student login (Name + Email + Password, exam details) | redirects to instructions if already logged in |
-| `/exam/:slug/instructions` | Rules, marking scheme, consent checkbox, full-screen start | requires that exam's session → else login |
-| `/exam/:slug/start` | Proctored exam (timer, palette, violations, auto-submit) | requires session → else login |
-| `/exam/:slug/submitted` | Submission confirmation | public (clears that exam's session) |
-| `/panel-admin` | Organizer dashboard (Exams / Results / Questions) | Supabase auth + admin role → else login |
-| `/panel-admin-login` | Organizer sign-in / first-account signup | public |
-| `/organizer` | Alias → redirects to `/panel-admin` | — |
-| `/submitted` | Generic confirmation (legacy) | public |
-| unknown slug | Friendly “Exam not found / link expired” page | — |
+| URL                        | Page                                                                             | Guard                                          |
+| -------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `/`                        | Landing page: hero, exam-link/code lookup, features, how-it-works, organizer CTA | public                                         |
+| `/exam`                    | “Find your exam” helper (paste link/code)                                        | public                                         |
+| `/exam/:slug`              | Exam-specific student login (Name + Email + Password, exam details)              | redirects to instructions if already logged in |
+| `/exam/:slug/instructions` | Rules, marking scheme, consent checkbox, full-screen start                       | requires that exam's session → else login      |
+| `/exam/:slug/start`        | Proctored exam (timer, palette, violations, auto-submit)                         | requires session → else login                  |
+| `/exam/:slug/submitted`    | Submission confirmation                                                          | public (clears that exam's session)            |
+| `/panel-admin`             | Organizer dashboard (Exams / Results / Questions)                                | organizer session + `admin` role → else login  |
+| `/panel-admin-login`       | Organizer sign-in / first-account signup                                         | public                                         |
+| `/organizer`               | Alias → redirects to `/panel-admin`                                              | —                                              |
+| `/submitted`               | Generic confirmation (legacy)                                                    | public                                         |
+| unknown slug               | Friendly “Exam not found / link expired” page                                    | —                                              |
 
 ## API Reference
 
 All endpoints are **TanStack Start server functions** invoked over POST —
-inputs are Zod-validated, and organizer functions pass through JWT + role
-middleware before any handler code runs.
+inputs are Zod-validated, and organizer functions pass through the
+`requireOrganizerAuth` HMAC-session middleware before any handler code runs.
 
 ### Student functions — `src/lib/exam.functions.ts`
 
-| Function | Input | Returns | Notes |
-| -------- | ----- | ------- | ----- |
-| `getExamPublic` | `{ slug }` | Public exam card: title, description, duration, marks, window, `phase` | `slug` accepts a bare slug **or** a full pasted URL; throws `EXAM_NOT_FOUND` on bad links |
-| `loginExamParticipant` | `{ slug, name, email, password }` | `{ token, name }` | Checks enablement and time window first, then the salted hash; refreshes the stored display name; 5 failures → 10-minute lockout |
-| `getExamBrief` | `{ slug, token }` | `{ name, status, meta, phase }` | Instructions page payload — **never includes questions** |
-| `getExamState` | `{ slug, token }` | `{ name, status, examStartedAt, violations, serverNow, meta, examTitle, questions, answers }` | Server computes elapsed time; auto-submits with reason `timeout` when the duration is exceeded; returns no questions once completed |
-| `startExam` | `{ slug, token }` | `{ ok }` | `not_started → in_progress`, stamps `exam_started_at` |
-| `saveAnswer` | `{ slug, token, questionId, option }` | `{ saved }` | Upserts on `(participant_id, question_id)`; silently returns `saved: false` if the token/slug pair doesn't match |
-| `reportViolation` | `{ slug, token }` | `{ count, submitted }` | Calls the `increment_violation` RPC; on the 3rd violation auto-submits with reason `violation` |
-| `submitExam` | `{ slug, token, reason: "manual" \| "timeout" }` | `{ submitted }` | Runs the idempotent `submit_exam` RPC; re-submitting an already-completed attempt returns success without side effects |
+| Function               | Input                                            | Returns                                                                                       | Notes                                                                                                                                     |
+| ---------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `getExamPublic`        | `{ slug }`                                       | Public exam card: title, description, duration, marks, window, `phase`                        | `slug` accepts a bare slug **or** a full pasted URL; throws `EXAM_NOT_FOUND` on bad links                                                 |
+| `loginExamParticipant` | `{ slug, name, email, password }`                | `{ token, name }`                                                                             | Checks enablement and time window first, then the salted hash; refreshes the stored display name; 5 failures → 10-minute lockout          |
+| `getExamBrief`         | `{ slug, token }`                                | `{ name, status, meta, phase }`                                                               | Instructions page payload — **never includes questions**                                                                                  |
+| `getExamState`         | `{ slug, token }`                                | `{ name, status, examStartedAt, violations, serverNow, meta, examTitle, questions, answers }` | Server computes elapsed time; auto-submits with reason `timeout` when the duration is exceeded; returns no questions once completed       |
+| `startExam`            | `{ slug, token }`                                | `{ ok }`                                                                                      | `not_started → in_progress`, stamps `exam_started_at`                                                                                     |
+| `saveAnswer`           | `{ slug, token, questionId, option }`            | `{ saved }`                                                                                   | Upserts on `(participant_id, question_id)`; silently returns `saved: false` if the token/slug pair doesn't match                          |
+| `reportViolation`      | `{ slug, token }`                                | `{ count, submitted }`                                                                        | Calls `incrementViolation` (server-side counter); on the 3rd violation auto-submits with reason `violation`                               |
+| `submitExam`           | `{ slug, token, reason: "manual" \| "timeout" }` | `{ submitted }`                                                                               | Runs the idempotent `submitExam` transaction in `rpc.ts`; re-submitting an already-completed attempt returns success without side effects |
 
 **Student error codes:**
 
-| Code / message | Meaning |
-| -------------- | ------- |
-| `EXAM_NOT_FOUND` | Slug doesn't exist (typo, regenerated link, migration not applied) |
-| `NOT_AUTHENTICATED` | Token missing, unknown, or issued for a different exam → client clears the session and redirects to login |
-| `Invalid credentials.` | Unknown email **or** wrong password — identical by design (no account enumeration) |
-| `Too many failed attempts…` | 5 wrong passwords → `locked_until = now + 10 min` |
-| `Exam has not started yet.` / `Exam has ended.` / `This exam link is no longer active.` | Outside the start/end window, or the organizer disabled the link |
-| `You have already submitted this exam.` | Attempt is already `completed` |
+| Code / message                                                                          | Meaning                                                                                                   |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `EXAM_NOT_FOUND`                                                                        | Slug doesn't exist (typo, regenerated link, migration not applied)                                        |
+| `NOT_AUTHENTICATED`                                                                     | Token missing, unknown, or issued for a different exam → client clears the session and redirects to login |
+| `Invalid credentials.`                                                                  | Unknown email **or** wrong password — identical by design (no account enumeration)                        |
+| `Too many failed attempts…`                                                             | 5 wrong passwords → `locked_until = now + 10 min`                                                         |
+| `Exam has not started yet.` / `Exam has ended.` / `This exam link is no longer active.` | Outside the start/end window, or the organizer disabled the link                                          |
+| `You have already submitted this exam.`                                                 | Attempt is already `completed`                                                                            |
 
 ### Organizer functions — `src/lib/admin.functions.ts`
 
-Every function below runs `.middleware([requireSupabaseAuth])` **and** an
-in-handler `assertAdmin` role check, then queries through the service-role
-client.
+Every function below runs `.middleware([requireOrganizerAuth])`, which
+verifies the organizer's HMAC session token (signed with `SESSION_SECRET`)
+and rejects revoked or unknown sessions before any handler code runs.
 
-| Group | Functions |
-| ----- | --------- |
-| Exams | `adminListExams` · `adminCreateExam` · `adminUpdateExam` · `adminRegenerateSlug` |
-| Students | `adminListStudents` · `adminAddStudent` · `adminBulkAddStudents` · `adminRegenerateStudentPassword` · `adminEmailCredentials` |
-| Results | `adminDashboard` · `adminParticipantDetail` · `adminResetParticipant` · `adminDeleteParticipant` |
-| Questions | `adminGetQuestionSet` · `adminUploadQuestionSet` · `adminUpdateMeta` |
+| Group     | Functions                                                                                                                     |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Exams     | `adminListExams` · `adminCreateExam` · `adminUpdateExam` · `adminRegenerateSlug`                                              |
+| Students  | `adminListStudents` · `adminAddStudent` · `adminBulkAddStudents` · `adminRegenerateStudentPassword` · `adminEmailCredentials` |
+| Results   | `adminDashboard` · `adminParticipantDetail` · `adminResetParticipant` · `adminDeleteParticipant`                              |
+| Questions | `adminGetQuestionSet` · `adminUploadQuestionSet` · `adminUpdateMeta`                                                          |
 
 > [!TIP]
 > `adminUploadQuestionSet` validates the JSON against a strict Zod schema
@@ -350,8 +371,9 @@ sequenceDiagram
 
 ### 1. Create the organizer account
 
-Open `/panel-admin-login` and sign up once. The database trigger
-`grant_first_admin` makes the **first-ever** user an admin automatically.
+Open `/panel-admin-login` and click **“Create the first organizer account”**.
+Sign-up is bootstrap-only: it is accepted while the `organizers` table is
+empty, so the first-ever account is also the admin.
 
 ### 2. Create an exam
 
@@ -359,11 +381,11 @@ Open `/panel-admin-login` and sign up once. The database trigger
 start/end times. The app generates the private link
 (`https://<domain>/exam/<slug>`) and copies it to your clipboard.
 
-| Control | Effect |
-| ------- | ------ |
-| Copy link | One-click copy of the exam URL |
-| New link | Regenerates the slug; the old URL stops working immediately |
-| Enable / Disable | Disabled links reject logins immediately |
+| Control          | Effect                                                       |
+| ---------------- | ------------------------------------------------------------ |
+| Copy link        | One-click copy of the exam URL                               |
+| New link         | Regenerates the slug; the old URL stops working immediately  |
+| Enable / Disable | Disabled links reject logins immediately                     |
 | Start / End time | Logins before start → “not started yet”; after end → “ended” |
 
 ### 3. Add students & share credentials
@@ -448,7 +470,8 @@ sheets, CSV exports, plus **Reset exam** (clears answers/timer/violations) and
 
 - **Node.js 20+** or **[Bun](https://bun.sh)** (the repo ships `bun.lock`;
   npm works too)
-- A free **[Supabase](https://supabase.com)** project
+- (Production only) a free **[Turso](https://turso.tech)** account — local
+  development runs on a plain SQLite file with no account at all
 - A desktop browser for testing the proctored exam flow
 
 ### 1. Install
@@ -465,23 +488,24 @@ bun install        # or: npm i
 cp .env.example .env
 ```
 
-Then fill in all five variables:
+Then fill in the three variables:
 
-| Variable | Scope | Description |
-| -------- | ----- | ----------- |
-| `SUPABASE_URL` | server | Supabase project URL |
-| `SUPABASE_PUBLISHABLE_KEY` | server | Publishable (client-safe) key |
-| `SUPABASE_SERVICE_ROLE_KEY` | **server only** — no `VITE_` prefix | Service-role key; must never reach the browser bundle |
-| `VITE_SUPABASE_URL` | browser | Same project URL, injected into the client |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | browser | Publishable key for the browser client |
+| Variable             | Scope           | Description                                                                           |
+| -------------------- | --------------- | ------------------------------------------------------------------------------------- |
+| `TURSO_DATABASE_URL` | server          | `libsql://…` URL of your Turso database, or `file:./local.db` for a local SQLite file |
+| `TURSO_AUTH_TOKEN`   | server          | Turso API token — leave empty for `file:` URLs                                        |
+| `SESSION_SECRET`     | **server only** | Long random string used to sign/verify organizer HMAC session tokens                  |
 
-Find the values in **Supabase Dashboard → Project Settings → API**
-(publishable + secret/service-role keys). The legacy `anon` JWT is not used by
-the app.
+For local development the defaults work out of the box: point
+`TURSO_DATABASE_URL` at `file:./local.db`, leave `TURSO_AUTH_TOKEN` empty,
+and set any long random `SESSION_SECRET`. For production, create a Turso
+database (`turso db create prarambh`) and mint an auth token
+(`turso db tokens create prarambh`).
 
 > [!IMPORTANT]
-> `.env` is git-ignored — never commit real values. Only `VITE_`-prefixed
-> variables are exposed to the client; keep the service-role key server-side.
+> `.env` is git-ignored — never commit real values. All three variables are
+> server-only: none use the `VITE_` prefix and none ever reach the browser
+> bundle.
 
 ### 3. Create the schema
 
@@ -501,44 +525,50 @@ bun run build && bun run preview
 
 ### Available scripts
 
-| Script | Command | Purpose |
-| ------ | ------- | ------- |
-| `dev` | `vite dev` | Start the dev server with HMR |
-| `build` | `vite build` | Production build |
-| `build:dev` | `vite build --mode development` | Development-mode build |
-| `preview` | `vite preview` | Serve the production build locally |
-| `lint` | `eslint .` | Lint the whole repo |
-| `format` | `prettier --write .` | Format all files with Prettier |
+| Script         | Command                          | Purpose                                                       |
+| -------------- | -------------------------------- | ------------------------------------------------------------- |
+| `dev`          | `vite dev`                       | Start the dev server with HMR                                 |
+| `build`        | `vite build`                     | Production build                                              |
+| `build:dev`    | `vite build --mode development`  | Development-mode build                                        |
+| `preview`      | `vite preview`                   | Serve the production build locally                            |
+| `db:migrate`   | `node scripts/db-migrate.mjs`    | Apply pending SQL migrations from `migrations/`               |
+| `db:keepalive` | `node scripts/keep-db-awake.mjs` | Health-check the database (connect + read applied migrations) |
+| `lint`         | `eslint .`                       | Lint the whole repo                                           |
+| `format`       | `prettier --write .`             | Format all files with Prettier                                |
 
 ---
 
 ## Database Setup
 
-Run **`supabase/migrations/20261006000000_multiexam_platform.sql`** in
-**Supabase Dashboard → SQL Editor → New query → Run**. On a brand-new project
-it is self-contained (drops nothing, creates everything in dependency order).
-On the original Lovable-linked database, run the two earlier migration files
-first, in filename order.
+The schema lives in `migrations/0001_init.sql` (SQLite/libSQL dialect) and is
+applied by the migration runner, which tracks applied files in a `_migrations`
+table:
+
+```sh
+npm run db:migrate        # applies any pending migrations
+```
+
+- **Local development** — `TURSO_DATABASE_URL=file:./local.db` creates the
+  SQLite file next to the project on first run.
+- **Turso (production)** — point `TURSO_DATABASE_URL` at your `libsql://…`
+  URL and run the same command once per deploy (it's idempotent: already
+  applied files are skipped).
 
 What it creates:
 
-| Object | Purpose |
-| ------ | ------- |
-| `exams` | Exam records with slug, window, marks, question-set link |
-| `participants` (+ `exam_id`, `password_salt/hash`, `failed_attempts`, `locked_until`) | Per-exam student credentials |
-| `question_sets`, `responses`, `results`, `user_roles` | Question banks, answers, scores, admin roles |
-| `submit_exam()` | Atomic server-side scoring, exam-aware, idempotent |
-| `increment_violation()` | Atomic violation counter |
-| `grant_first_admin()` + trigger | First signup becomes admin |
-| `has_role()` + RLS policies | Admins can read; students touch nothing directly (service-role only via server) |
+| Object                                                                                  | Purpose                                                            |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `exams`                                                                                 | Exam records with slug, window, marks, status, question-set link   |
+| `participants` (+ `exam_id`, bcrypt `password_hash`, `failed_attempts`, `locked_until`) | Per-exam student credentials                                       |
+| `question_sets`, `responses`, `results`                                                 | Question banks, answers, scores                                    |
+| `organizers`                                                                            | Organizer accounts (bcrypt hashes + role), replacing Supabase Auth |
 
-Verify in **Table Editor** that all six tables exist, then sign up once at
-`/panel-admin-login` to become admin.
+The plpgsql RPCs from the Supabase era (`submit_exam`, `increment_violation`)
+are ported to TypeScript in `src/integrations/turso/rpc.ts` and run inside a
+libSQL transaction — there are no database-side functions to create.
 
-> [!TIP]
-> Prefer the CLI? `supabase db push` also works if you've linked the project
-> with `supabase link` — just make sure the migration files run in filename
-> order.
+After migrating, sign up once at `/panel-admin-login` to create the first
+organizer account.
 
 ---
 
@@ -562,13 +592,14 @@ src/
   lib/
     exam.functions.ts             # student server functions (exam-scoped)
     admin.functions.ts            # organizer server functions (auth-guarded)
+    auth.functions.ts             # organizer signup / login / session fns
     exam-session.ts               # per-slug localStorage sessions
   components/
     DesktopOnly.tsx               # phone block screen
     ui/                           # shadcn/ui primitives
-  integrations/supabase/          # clients, auth middleware, generated types
+  integrations/turso/             # libSQL facade, rpc.ts, HMAC auth + middleware
   styles.css                      # design system (Tailwind 4 theme)
-supabase/migrations/              # SQL migrations (see Database Setup)
+migrations/                       # SQL migrations applied by npm run db:migrate
 ```
 
 `src/routeTree.gen.ts` is auto-generated by TanStack Router — never edit it.
@@ -577,11 +608,11 @@ supabase/migrations/              # SQL migrations (see Database Setup)
 
 ## Configuration & Branding
 
-| What | Where |
-| ---- | ----- |
+| What                                    | Where                                                                                                           |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Name, logo mark, tagline, support email | `src/config/brand.ts` (`appName`, `logoMark`, `tagline`, `supportEmail`) — default neutral name: **ExamPortal** |
-| Colors & typography | `src/styles.css` (`@theme` + `:root`/`.dark` oklch tokens: `brand`, `stone`, `pale-green`, `coral`, …) |
-| Secrets | Environment variables only (`.env`, git-ignored) |
+| Colors & typography                     | `src/styles.css` (`@theme` + `:root`/`.dark` oklch tokens: `brand`, `stone`, `pale-green`, `coral`, …)          |
+| Secrets                                 | Environment variables only (`.env`, git-ignored)                                                                |
 
 No hardcoded credentials, emails, or domains exist anywhere in the code — a
 full rebrand is a one-file edit plus a palette swap.
@@ -590,17 +621,19 @@ full rebrand is a one-file edit plus a palette swap.
 
 ## Security
 
-- Passwords stored as **salted SHA-256** (`sha256(salt + password)`, 16-byte
-  hex salt per student); plain text exists only in the one-time creation
-  response.
+- Passwords stored as **bcrypt** hashes (cost 10) — students and organizers
+  alike; plain text exists only in the one-time creation response. Legacy
+  rows using salted SHA-256 still verify via a one-time transparent fallback.
 - Generic **“Invalid credentials”** for unknown email vs. wrong password (no
   account enumeration); **timing-safe** hash comparison; **5 strikes →
   10-minute lockout** (`failed_attempts`, `locked_until`).
 - All student operations re-verify `{ slug, token }` against the participant's
   exam — cross-exam token reuse is rejected server-side.
-- Organizer functions require a valid **Supabase JWT** *and* the `admin` role;
-  **RLS** denies students direct table access; scoring runs in
-  `SECURITY DEFINER` RPCs granted to `service_role` only.
+- Organizer sessions are **stateless HMAC-SHA256 tokens** signed with
+  `SESSION_SECRET` (30-day expiry); every organizer function passes the
+  `requireOrganizerAuth` middleware. The database is reachable **only from
+  server functions** — there is no client-side DB access, and the Turso auth
+  token never leaves the server.
 - Full-screen + visibility/blur enforcement with **server-counted
   violations**; timeouts enforced server-side on every state read (the client
   clock is display only).
@@ -636,19 +669,19 @@ violation count. A drop after the timer expires still results in a timeout
 auto-submit on the next state read.
 
 **I lost a student's password — can it be recovered?**
-No. Only `sha256(salt + password)` is stored. Use **Regenerate** to issue a
-fresh one (shown once), or download the credentials CSV right after creating
-students.
+No. Only a bcrypt hash is stored. Use **Regenerate** to issue a fresh one
+(shown once), or download the credentials CSV right after creating students.
 
 **How do I rebrand this as my own product?**
 Edit `src/config/brand.ts` (name, tagline, logo mark, support email) and
 adjust the oklch tokens in `src/styles.css`. Nothing else references the name.
 
 **How do I add another admin?**
-RLS lets existing admins read `user_roles`, but role assignment is managed in
-the database — insert a row with `role = 'admin'` for the target user's id in
-the Supabase table editor. (The first-ever signup is granted admin
-automatically by the `grant_first_admin` trigger.)
+Sign-up is bootstrap-only (it works while the `organizers` table is empty).
+To add another organizer afterwards, insert a row into `organizers` with a
+bcrypt hash of their password and `role = 'admin'` — for example with a small
+Node script using `bcryptjs` — or expose an invite flow in the organizer
+panel.
 
 ---
 
@@ -668,29 +701,31 @@ automatically by the `grant_first_admin` trigger.)
 
 ## Troubleshooting
 
-| Symptom | Cause / Fix |
-| ------- | ----------- |
-| “Missing Supabase environment variable(s)” | `.env` incomplete or dev server started before `.env` existed — fill all 5 vars, restart `bun run dev` |
-| “Exam not found” on a fresh link | Slug typo, regenerated link, or migration not applied on that project |
-| Login fails for a valid student | Wrong exam link (credentials are per-exam), or account locked after 5 attempts (wait 10 min or regenerate) |
-| Organizer dashboard says “Forbidden” | That Supabase user lacks the `admin` role — first signup owns it; check the `user_roles` table |
-| Scores are 0 / questions missing | Exam has no question set linked — upload one under Questions |
-| `tsc` errors after pulling | Run `bun install` (deps drift), don't hand-edit `routeTree.gen.ts` |
+| Symptom                                                                       | Cause / Fix                                                                                                                |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| “Missing TURSO_DATABASE_URL environment variable” / “Missing SESSION_SECRET…” | `.env` incomplete or dev server started before `.env` existed — fill all 3 vars, restart `bun run dev`                     |
+| “Exam not found” on a fresh link                                              | Slug typo, regenerated link, or `npm run db:migrate` not run against that database                                         |
+| Login fails for a valid student                                               | Wrong exam link (credentials are per-exam), or account locked after 5 attempts (wait 10 min or regenerate)                 |
+| Organizer login always rejected                                               | Session token signed with a different `SESSION_SECRET` (secret rotated or env missing) — sign in again after fixing `.env` |
+| Health-check workflow skips                                                   | `TURSO_DATABASE_URL` GitHub secret not set yet — the workflow skips with a notice instead of failing                       |
+| Scores are 0 / questions missing                                              | Exam has no question set linked — upload one under Questions                                                               |
+| `tsc` errors after pulling                                                    | Run `bun install` (deps drift), don't hand-edit `routeTree.gen.ts`                                                         |
 
 ---
 
 ## Tech Stack
 
-| Layer | Choice |
-| ----- | ------ |
-| Framework | [TanStack Start](https://tanstack.com/start) (SSR + server functions) |
-| Routing / data | [TanStack Router](https://tanstack.com/router) (file-based) · [TanStack Query](https://tanstack.com/query) |
-| UI | [React 19](https://react.dev) · [Tailwind CSS 4](https://tailwindcss.com) · [shadcn/ui](https://ui.shadcn.com) (Radix) · lucide-react · recharts |
-| Backend | [Supabase](https://supabase.com) — Postgres + Auth + RLS + `SECURITY DEFINER` RPCs |
-| Validation | [Zod](https://zod.dev) on every server-function input |
-| Build | [Vite 8](https://vite.dev) · TypeScript 5.8 · ESLint 9 · Prettier |
-| Runtime | Bun (lockfile ships) or Node.js 20+ / npm |
-| Crypto | Node built-in `crypto` only — no extra auth/crypto libraries |
+| Layer          | Choice                                                                                                                                             |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Framework      | [TanStack Start](https://tanstack.com/start) (SSR + server functions)                                                                              |
+| Routing / data | [TanStack Router](https://tanstack.com/router) (file-based) · [TanStack Query](https://tanstack.com/query)                                         |
+| UI             | [React 19](https://react.dev) · [Tailwind CSS 4](https://tailwindcss.com) · [shadcn/ui](https://ui.shadcn.com) (Radix) · lucide-react · recharts   |
+| Database       | [Turso](https://turso.tech) — libSQL/SQLite via `@libsql/client`, behind a supabase-js-compatible query facade (`db.from(...)`)                    |
+| Auth           | Custom organizer auth — [bcryptjs](https://github.com/dcodeIO/bcrypt.js) password hashes + stateless HMAC-SHA256 session tokens (`SESSION_SECRET`) |
+| Validation     | [Zod](https://zod.dev) on every server-function input                                                                                              |
+| Build          | [Vite 8](https://vite.dev) · TypeScript 5.8 · ESLint 9 · Prettier                                                                                  |
+| Runtime        | Bun (lockfile ships) or Node.js 20+ / npm                                                                                                          |
+| Crypto         | `bcryptjs` for password hashing · Node built-in `crypto` for HMAC session tokens                                                                   |
 
 ---
 
@@ -721,15 +756,6 @@ automatically by the `grant_first_admin` trigger.)
 
 [Features](#features) · [Architecture](#architecture) · [API Reference](#api-reference) · [Getting Started](#getting-started) · [FAQ](#faq)
 
-<sub>Built with TanStack Start, React 19, Tailwind CSS, and Supabase.</sub>
+<sub>Built with TanStack Start, React 19, Tailwind CSS, and Turso.</sub>
 
 </div>
-
-
-
-
-
-
-
-
-

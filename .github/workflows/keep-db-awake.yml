@@ -1,12 +1,15 @@
-# Keeps the Supabase project from auto-pausing (free tier pauses after
-# ~7 days of inactivity) by running a trivial read every 4 days.
-name: Keep database awake
+# Scheduled database health check (runs every 4 days).
+#
+# Turso does not auto-pause like Supabase's free tier, so this job verifies
+# connectivity + auth + applied migrations instead — it fails loudly when a
+# token was rotated or the schema was never applied.
+name: Check database health
 
 on:
   schedule:
     # Every 4th day of the month at 06:00 UTC.
-    # (Cron has no true "every 4 days" — day-of-month */4 gives gaps of
-    # 2-4 days at month boundaries, always safely under the 7-day pause.)
+    # (Cron has no true "every 4 days" - day-of-month */4 gives gaps of
+    # 2-4 days at month boundaries; harmless now that pausing is gone.)
     - cron: "0 6 */4 * *"
   # Allow manual runs from the Actions tab (also useful right after setup).
   workflow_dispatch:
@@ -27,8 +30,24 @@ jobs:
         with:
           node-version: 20
 
-      - name: Ping Supabase (keep-alive)
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Turso config
+        id: turso
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+        run: |
+          if [ -n "$TURSO_DATABASE_URL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::TURSO_DATABASE_URL secret is not set yet - skipping the database health check."
+          fi
+
+      - name: Ping Turso (health check)
+        if: steps.turso.outputs.configured == 'true'
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: node scripts/keep-db-awake.mjs

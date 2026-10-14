@@ -33,3 +33,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test environment & artifacts (never commit test secrets/credentials)
+!.env.test.example
+tests/.artifacts/
+
+# Local SQLite dev database (file: TURSO_DATABASE_URL)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+

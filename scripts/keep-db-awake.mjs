@@ -1,50 +1,52 @@
-// Keep-alive ping for the Supabase project (free tier pauses after ~7 days
-// of inactivity). Runs a trivial read against the REST API so the database
-// counts as "active". Only reads; no writes, no data mutated.
+// Scheduled database health check for Turso (libSQL).
+//
+// Turso does NOT auto-pause like Supabase's free tier, so the original
+// "keep-alive" purpose is gone. The workflow keeps its 4-day cadence and now
+// verifies that the database is reachable, authenticated, and migrated —
+// catching config drift (rotated tokens, missing schema) early.
+// Only reads; no writes, no data mutated.
 //
 // Required env:
-//   SUPABASE_URL              https://<project-ref>.supabase.co
-//   SUPABASE_SERVICE_ROLE_KEY server-only key (kept as a GitHub secret)
+//   TURSO_DATABASE_URL libsql://<db>-<org>.turso.io (cloud) or file:... (dev)
+//   TURSO_AUTH_TOKEN   required for cloud databases, ignored for file:
 //
 // Run manually:  node scripts/keep-db-awake.mjs
 
-const url = process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+import { createClient } from "@libsql/client";
 
-if (!url || !key) {
-  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env var.");
+import { loadEnv } from "./load-env.mjs";
+
+loadEnv();
+
+const url = process.env.TURSO_DATABASE_URL;
+
+if (!url) {
+  console.error("Missing TURSO_DATABASE_URL env var.");
   process.exit(1);
 }
 
 const started = Date.now();
-
-async function ping(pathname) {
-  const res = await fetch(`${url.replace(/\/$/, "")}${pathname}`, {
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-    },
-  });
-  return res.status;
-}
+const db = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
 
 try {
-  // 1) REST query (touches PostgREST + Postgres, resets the inactivity timer)
-  const restStatus = await ping("/rest/v1/exams?select=id&limit=1");
-  // 2) Auth service health (cheap, catches config drift too)
-  const authStatus = await ping("/auth/v1/health");
+  // 1) Connectivity + auth (cheap round trip).
+  await db.execute("SELECT 1");
+  const connectMs = Date.now() - started;
 
-  console.log(`REST status: ${restStatus}, Auth status: ${authStatus} in ${Date.now() - started}ms`);
+  // 2) Schema check: _migrations only exists once `npm run db:migrate` ran.
+  const migrations = await db.execute("SELECT count(*) AS n FROM _migrations");
+  const applied = Number(migrations.rows[0]?.n ?? 0);
 
-  // Any HTTP answer from Supabase proves the project is awake. A 4xx on the
-  // REST call (e.g. table renamed) still reached the API gateway — but fail
-  // loudly on network errors / 5xx so the workflow shows red.
-  if (restStatus >= 500 || authStatus >= 500) {
-    console.error("Supabase returned a 5xx — project may be down or still paused.");
+  console.log(
+    `Connected in ${connectMs}ms (total ${Date.now() - started}ms), migrations applied: ${applied}`,
+  );
+
+  if (applied < 1) {
+    console.error("Database reachable but NO migrations applied. Run: npm run db:migrate");
     process.exit(1);
   }
-  console.log("Database is awake. ✔");
+  console.log("Database healthy.");
 } catch (err) {
-  console.error("Ping failed:", err instanceof Error ? err.message : err);
+  console.error("Health check failed:", err instanceof Error ? err.message : err);
   process.exit(1);
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { brand } from "@/config/brand";
-import { supabase } from "@/integrations/supabase/client";
+import { authClient } from "@/integrations/turso/auth-client";
 
 export const Route = createFileRoute("/panel-admin-login")({
   ssr: false,
@@ -15,7 +15,7 @@ export const Route = createFileRoute("/panel-admin-login")({
     // history (keeps Android-back from returning here after sign-in).
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await authClient.getSession();
     if (session) throw redirect({ to: "/panel-admin", search: { view: "dashboard" } });
   },
   head: () => ({
@@ -42,20 +42,16 @@ function AdminLogin() {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: `${window.location.origin}/panel-admin-login` },
-        });
+        // Bootstrap only: the server rejects sign-up once any organizer exists.
+        const { error } = await authClient.signUp({ email, password });
         if (error) throw error;
-        toast.success("Account created. Check your email to confirm, then sign in.");
-        setMode("signin");
+        toast.success("Organizer account created — signed in.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await authClient.signInWithPassword({ email, password });
         if (error) throw error;
-        // Replace: back must never return to the login form after sign-in.
-        navigate({ to: "/panel-admin", search: { view: "dashboard" }, replace: true });
       }
+      // Replace: back must never return to the login form after sign-in.
+      navigate({ to: "/panel-admin", search: { view: "dashboard" }, replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign in failed.");
     } finally {

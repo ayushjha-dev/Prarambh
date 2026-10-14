@@ -116,8 +116,8 @@ function phaseOf(exam: {
   return "live";
 }
 
-async function getExamBySlug(supabaseAdmin: any, slug: string) {
-  const { data: exam } = await supabaseAdmin
+async function getExamBySlug(db: any, slug: string) {
+  const { data: exam } = await db
     .from("exams")
     .select(
       "id, slug, title, description, duration_minutes, marks_correct, marks_wrong, starts_at, ends_at, is_enabled, question_set_id",
@@ -127,9 +127,9 @@ async function getExamBySlug(supabaseAdmin: any, slug: string) {
   return exam ?? null;
 }
 
-async function getQuestionDoc(supabaseAdmin: any, exam: any, participantSetId?: string | null) {
+async function getQuestionDoc(db: any, exam: any, participantSetId?: string | null) {
   const setId = exam?.question_set_id ?? participantSetId ?? null;
-  let setQuery = supabaseAdmin.from("question_sets").select("data");
+  let setQuery = db.from("question_sets").select("data");
   setQuery = setId ? setQuery.eq("id", setId) : setQuery.eq("is_active", true);
   const { data: qs } = await setQuery.maybeSingle();
   return qs?.data ?? null;
@@ -155,10 +155,10 @@ function toPublicExam(exam: any, totalQuestions: number): PublicExam {
 export const getExamPublic = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ slug: slugSchema }).parse(input))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const exam = await getExamBySlug(supabaseAdmin, data.slug);
+    const { db } = await import("@/integrations/turso/client.server");
+    const exam = await getExamBySlug(db, data.slug);
     if (!exam) throw new Error("EXAM_NOT_FOUND");
-    const doc = await getQuestionDoc(supabaseAdmin, exam, null);
+    const doc = await getQuestionDoc(db, exam, null);
     return toPublicExam(
       exam,
       Array.isArray((doc as any)?.questions) ? (doc as any).questions.length : 0,
@@ -177,10 +177,10 @@ export const loginExamParticipant = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
     const { default: crypto } = await import("node:crypto");
 
-    const exam = await getExamBySlug(supabaseAdmin, data.slug);
+    const exam = await getExamBySlug(db, data.slug);
     if (!exam) throw new Error("EXAM_NOT_FOUND");
     const phase = phaseOf(exam);
     if (phase === "disabled") throw new Error("This exam link is no longer active.");
@@ -188,7 +188,7 @@ export const loginExamParticipant = createServerFn({ method: "POST" })
     if (phase === "ended") throw new Error("Exam has ended.");
 
     const email = data.email.toLowerCase();
-    const { data: participant } = await supabaseAdmin
+    const { data: participant } = await db
       .from("participants")
       .select(
         "id, name, email, session_token, status, password_salt, password_hash, failed_attempts, locked_until",
@@ -232,7 +232,7 @@ export const loginExamParticipant = createServerFn({ method: "POST" })
     if (!match) {
       const failed = Number(participant.failed_attempts ?? 0) + 1;
       const locked = failed >= MAX_FAILED_ATTEMPTS;
-      await supabaseAdmin
+      await db
         .from("participants")
         .update({
           failed_attempts: locked ? 0 : failed,
@@ -249,7 +249,7 @@ export const loginExamParticipant = createServerFn({ method: "POST" })
       throw new Error("You have already submitted this exam.");
     }
 
-    await supabaseAdmin
+    await db
       .from("participants")
       .update({
         failed_attempts: 0,
@@ -269,11 +269,11 @@ export const loginExamParticipant = createServerFn({ method: "POST" })
 export const getExamBrief = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ slug: slugSchema, token: z.string().uuid() }).parse(input))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const exam = await getExamBySlug(supabaseAdmin, data.slug);
+    const { db } = await import("@/integrations/turso/client.server");
+    const exam = await getExamBySlug(db, data.slug);
     if (!exam) throw new Error("EXAM_NOT_FOUND");
 
-    const { data: p } = await supabaseAdmin
+    const { data: p } = await db
       .from("participants")
       .select("id, name, status")
       .eq("session_token", data.token)
@@ -281,7 +281,7 @@ export const getExamBrief = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!p) throw new Error("NOT_AUTHENTICATED");
 
-    const doc = await getQuestionDoc(supabaseAdmin, exam, null);
+    const doc = await getQuestionDoc(db, exam, null);
     return {
       name: p.name as string,
       status: p.status as string,
@@ -293,12 +293,12 @@ export const getExamBrief = createServerFn({ method: "POST" })
 export const getExamState = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ slug: slugSchema, token: z.string().uuid() }).parse(input))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { db } = await import("@/integrations/turso/client.server");
 
-    const exam = await getExamBySlug(supabaseAdmin, data.slug);
+    const exam = await getExamBySlug(db, data.slug);
     if (!exam) throw new Error("EXAM_NOT_FOUND");
 
-    const { data: p } = await supabaseAdmin
+    const { data: p } = await db
       .from("participants")
       .select(
         "id, name, email, status, exam_started_at, tab_violation_count, question_set_id, submit_reason",
@@ -309,7 +309,7 @@ export const getExamState = createServerFn({ method: "POST" })
 
     if (!p) throw new Error("NOT_AUTHENTICATED");
 
-    const doc = await getQuestionDoc(supabaseAdmin, exam, p.question_set_id as string | null);
+    const doc = await getQuestionDoc(db, exam, p.question_set_id as string | null);
     const meta = readMeta(doc, exam);
     const questions = stripQuestions(doc);
 
@@ -317,12 +317,12 @@ export const getExamState = createServerFn({ method: "POST" })
     if (status === "in_progress" && p.exam_started_at) {
       const elapsed = (Date.now() - new Date(p.exam_started_at).getTime()) / 1000;
       if (elapsed >= meta.duration_minutes * 60) {
-        await supabaseAdmin.rpc("submit_exam", { p_participant: p.id, p_reason: "timeout" });
+        await db.rpc("submit_exam", { p_participant: p.id, p_reason: "timeout" });
         status = "completed";
       }
     }
 
-    const { data: responses } = await supabaseAdmin
+    const { data: responses } = await db
       .from("responses")
       .select("question_id, selected_option")
       .eq("participant_id", p.id);
@@ -336,21 +336,28 @@ export const getExamState = createServerFn({ method: "POST" })
       meta,
       examTitle: exam.title as string,
       questions: status === "completed" ? [] : questions,
-      answers: (responses ?? []).reduce<Record<number, string>>((acc, r: any) => {
-        if (r.selected_option) acc[r.question_id] = r.selected_option;
-        return acc;
-      }, {}),
+      answers: ((
+        responses ?? []
+      ) as Array<{ question_id: number; selected_option: string | null }>).reduce<
+        Record<number, string>
+      >(
+        (acc, r) => {
+          if (r.selected_option) acc[r.question_id] = r.selected_option;
+          return acc;
+        },
+        {},
+      ),
     };
   });
 
 export const startExam = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ slug: slugSchema, token: z.string().uuid() }).parse(input))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const exam = await getExamBySlug(supabaseAdmin, data.slug);
+    const { db } = await import("@/integrations/turso/client.server");
+    const exam = await getExamBySlug(db, data.slug);
     if (!exam) throw new Error("EXAM_NOT_FOUND");
 
-    const { data: p } = await supabaseAdmin
+    const { data: p } = await db
       .from("participants")
       .select("id, status, exam_started_at")
       .eq("session_token", data.token)
@@ -361,7 +368,7 @@ export const startExam = createServerFn({ method: "POST" })
     if (p.status === "completed") throw new Error("You have already submitted this exam.");
 
     if (p.status === "not_started" || !p.exam_started_at) {
-      await supabaseAdmin
+      await db
         .from("participants")
         .update({ status: "in_progress", exam_started_at: new Date().toISOString() })
         .eq("id", p.id)
@@ -387,8 +394,8 @@ export const saveAnswer = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const normalized = data.option ? [...new Set(data.option.split(","))].sort().join(",") : null;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: p } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: p } = await db
       .from("participants")
       .select("id, status, exam_id, exams!inner(slug)")
       .eq("session_token", data.token)
@@ -397,7 +404,7 @@ export const saveAnswer = createServerFn({ method: "POST" })
     if (!p || p.status !== "in_progress") return { saved: false };
     if ((p as any).exams?.slug !== data.slug) return { saved: false };
 
-    const { error } = await supabaseAdmin.from("responses").upsert(
+    const { error } = await db.from("responses").upsert(
       {
         participant_id: p.id,
         question_id: data.questionId,
@@ -413,8 +420,8 @@ export const saveAnswer = createServerFn({ method: "POST" })
 export const reportViolation = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ slug: slugSchema, token: z.string().uuid() }).parse(input))
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: p } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: p } = await db
       .from("participants")
       .select("id, status, exam_id, exams!inner(slug)")
       .eq("session_token", data.token)
@@ -423,12 +430,12 @@ export const reportViolation = createServerFn({ method: "POST" })
     if (!p || p.status !== "in_progress") return { count: 0, submitted: true };
     if ((p as any).exams?.slug !== data.slug) return { count: 0, submitted: true };
 
-    const { data: count } = await supabaseAdmin.rpc("increment_violation", {
+    const { data: count } = await db.rpc("increment_violation", {
       p_participant: p.id,
     });
     const n = Number(count ?? 0);
     if (n >= 3) {
-      await supabaseAdmin.rpc("submit_exam", { p_participant: p.id, p_reason: "violation" });
+      await db.rpc("submit_exam", { p_participant: p.id, p_reason: "violation" });
       return { count: n, submitted: true };
     }
     return { count: n, submitted: false };
@@ -441,8 +448,8 @@ export const submitExam = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: p } = await supabaseAdmin
+    const { db } = await import("@/integrations/turso/client.server");
+    const { data: p } = await db
       .from("participants")
       .select("id, status, exam_id, exams!inner(slug)")
       .eq("session_token", data.token)
@@ -452,6 +459,6 @@ export const submitExam = createServerFn({ method: "POST" })
     if ((p as any).exams?.slug !== data.slug) throw new Error("Session not found.");
     if (p.status === "completed") return { submitted: true };
 
-    await supabaseAdmin.rpc("submit_exam", { p_participant: p.id, p_reason: data.reason });
+    await db.rpc("submit_exam", { p_participant: p.id, p_reason: data.reason });
     return { submitted: true };
   });
